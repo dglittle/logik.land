@@ -1,0 +1,24 @@
+<head>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>logik.land</title>
+</head>
+<script src="https://www.gstatic.com/firebasejs/5.5.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/5.5.0/firebase-firestore.js"></script>
+<body><script>
+
+var config = {
+	apiKey: "AIzaSyA1Ez59Q8I7ayjalvcLGKMAj-Gxt9tdsnY",
+	authDomain: "logikland-55dfb.firebaseapp.com",
+	databaseURL: "https://logikland-55dfb.firebaseio.com",
+	projectId: "logikland-55dfb",
+	storageBucket: "logikland-55dfb.appspot.com",
+	messagingSenderId: "179129725350"
+}
+var db = firebase.initializeApp(config).firestore()
+db.settings({ timestampsInSnapshots : true })
+
+db.doc('files/run_me').get().then(function (x) {
+	eval(x.data().text)
+})
+
+</script></body>
