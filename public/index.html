@@ -4,6 +4,7 @@
 </head>
 <script src="cpu004.js"></script>
 <script src="https://www.gstatic.com/firebasejs/5.5.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/5.5.0/firebase-auth.js"></script>
 <script src="https://www.gstatic.com/firebasejs/5.5.0/firebase-firestore.js"></script>
 <body style="margin:0px"></body>
 <script>
@@ -19,14 +20,8 @@ var config = {
 var db = firebase.initializeApp(config).firestore()
 db.settings({ timestampsInSnapshots : true })
 
-db.doc('files/run_me').get().then(function (x) {
-	eval(x.data().text)
-})
-
-
-
-
-
+var uid = null
+var did_first_save = false
 
 var PALETTE_HEIGHT = 20
 var LOOP_INTERVAL = 20 // 20
@@ -43,7 +38,7 @@ var view = {
 }
 
 var version = 0
-var model = cpu004 // { x: , y: , t: , c: , v: } (t=type, c=charge, v=version)
+var model = {} // { x: , y: , t: , c: , v: } (t=type, c=charge, v=version)
 
 var stuff_sizes = {
     'wire' : 1,
@@ -56,7 +51,9 @@ var stuff_sizes = {
 
 var wave_front = {}
 
-function update_model(changes) {
+var unsaved_changes = {}
+
+function update_model(changes, dontUpdateFirebase) {
     each(changes, function (_, key) {
         if (_) {
             model[key] = _
@@ -74,9 +71,22 @@ function update_model(changes) {
     render_prep()
 
     render()
+
+	if (!dontUpdateFirebase && location.hash.substr(1)) {
+		Object.assign(unsaved_changes, changes)
+		if (uid) {
+			if (!did_first_save)
+				unsaved_changes.uid = uid
+
+			db.collection('chips').doc(location.hash.substr(1)).set(unsaved_changes, { merge : true })
+
+			did_first_save = true
+			unsaved_changes = {}
+		}
+	}
 }
 
-function set_new_model(new_model) {
+function set_new_model(new_model, dontUpdateFirebase) {
     var changes = {}
     each(model, function (_, key) {
         changes[key] = null
@@ -84,7 +94,24 @@ function set_new_model(new_model) {
     each(new_model, function (_, key) {
         changes[key] = _
     })
+    unsaved_changes = {}
     update_model(changes, dontUpdateFirebase)
+}
+
+function fetch_model() {
+	if (location.hash.substr(1)) {
+		db.collection('chips').doc(location.hash.substr(1)).get().then(function (x) {
+			x = x.data()
+			if (x) {
+				delete x.uid
+			} else {
+				x = {}
+			}
+	        set_new_model(x, true)
+		})
+	} else {
+		set_new_model(cpu004, true)
+	}
 }
 
 function copy_view_box() {
@@ -593,7 +620,23 @@ function loop() {
     
     setTimeout(loop, LOOP_INTERVAL)
 }
-update_model({})
+
+firebase.auth().onAuthStateChanged(function(user) {
+    if (user) {
+        uid = user.uid
+        did_first_save = false
+        update_model({})
+    } else {
+    	uid = null
+    }
+})
+firebase.auth().signInAnonymously()
+
+fetch_model()
+window.addEventListener('hashchange', function () {
+	fetch_model()
+}, false)
+
 loop()
 
 c.onmousemove = function (e) {
@@ -846,10 +889,5 @@ function each(o, cb) {
 	}
 	return true
 }
-
-
-
-
-
 
 </script>
