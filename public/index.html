@@ -150,11 +150,307 @@ function draw_palette() {
     d.style.width = '100%'
     d.style.height = PALETTE_HEIGHT*2 + 'px'
 
-    key_capture_box = document.createElement('textarea')
-    key_capture_box.style.width = '20px'
-    key_capture_box.style.height = '19px'
-    key_capture_box.style.marginBottom = '-5px'
-    key_capture_box.addEventListener('keydown', function (e) {
+    function drawMagnifyingGlass(c, g) {
+        g.beginPath()
+        g.moveTo(17, 17)
+        g.lineTo(33, 33)
+        g.lineWidth = 2
+        g.strokeStyle = 'black'
+        g.stroke()
+
+		g.beginPath()
+		g.arc(17.5, 17.5, 10, 0, 2*Math.PI)
+		g.fillStyle = 'lightblue'
+		g.fill()
+        g.strokeStyle = 'black'
+		g.stroke()
+    }
+
+    function createZoomInButton() {
+        var b = document.createElement('div')
+        b.style.background = 'white'
+        b.style.display = 'inline-block'
+        b.style.width = '40px'
+        b.style.height = '40px'
+        b.onclick = function () {
+	        view.scale *= 2
+	        render()
+        }
+
+        var c = document.createElement('canvas')
+        c.width = 40
+        c.height = 40
+        var g = c.getContext('2d')
+
+        drawMagnifyingGlass(c, g)
+
+		g.fillStyle = 'black'
+		g.fillRect(12, 16, 11, 3)
+		g.fillRect(16, 12, 3, 11)
+
+        b.append(c)
+        d.append(b)
+    }
+    createZoomInButton()
+    
+    function createZoomOutButton() {
+        var b = document.createElement('div')
+        b.style.background = 'white'
+        b.style.display = 'inline-block'
+        b.style.width = '40px'
+        b.style.height = '40px'
+        b.onclick = function () {
+	        view.scale = Math.floor(view.scale/2)
+	        if (view.scale < 1) view.scale = 1
+	        render()
+        }
+
+        var c = document.createElement('canvas')
+        c.width = 40
+        c.height = 40
+        var g = c.getContext('2d')
+
+        drawMagnifyingGlass(c, g)
+
+		g.fillStyle = 'black'
+		g.fillRect(12, 16, 11, 3)
+
+        b.append(c)
+        d.append(b)
+    }
+    createZoomOutButton()
+
+    function createStopButton() {
+        var b = document.createElement('div')
+        b.style.background = 'white'
+        b.style.display = 'inline-block'
+        b.style.width = '40px'
+        b.style.height = '40px'
+
+        var c = document.createElement('canvas')
+        c.width = 40
+        c.height = 40
+        var g = c.getContext('2d')
+
+        function redraw() {
+        	g.clearRect(0, 0, 40, 40)
+
+			g.fillStyle = 'black'
+			if (view.play) {
+				g.fillRect(12, 12, 40 - 12*2, 40 - 12*2)
+			} else {
+				g.beginPath()
+				g.moveTo(12, 12)
+				g.lineTo(12, 40 - 12)
+				g.lineTo(40 - 12, 20)
+				g.fill()
+			}
+        }
+        redraw()
+
+        b.onclick = function () {
+	        view.play = !view.play
+	        redraw()
+	        render()
+        }
+
+        b.append(c)
+        d.append(b)
+    }
+    createStopButton()
+
+    var radio_buttons = {}
+    
+    function create_radio_button(drawOn, drawOff, brush, clickRightAway) {
+        var b = document.createElement('div')
+        b.style.display = 'inline-block'
+        b.style.width = '40px'
+        b.style.height = '40px'
+
+        var c = document.createElement('canvas')
+        c.width = 40
+        c.height = 40
+        var g = c.getContext('2d')
+        b.append(c)
+
+        b.onclick = function () {
+            view.brush = brush
+            each(radio_buttons, function (x, k) {
+            	if (k != brush) x.drawOff(x.c, x.g)
+            })
+            drawOn(c, g)
+        }
+
+        radio_buttons[brush] = { c : c, g : g, drawOff : drawOff }
+        if (clickRightAway) b.onclick()
+        d.append(b)
+    }
+    
+    create_radio_button(function (c, g) {
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
+
+        g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(10, 18, 20, 4)
+    }, function (c, g) {
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
+
+        g.fillStyle = 'rgb(128, 128, 0)'
+    	g.fillRect(10, 18, 20, 4)
+    }, 'wire')
+    create_radio_button(function (c, g) {
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
+
+        g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(10, 18, 20, 4)
+    	g.fillRect(18, 10, 4, 20)
+    	g.fillStyle = 'rgb(0, 0, 0)'
+    	g.fillRect(18, 18, 4, 4)
+    }, function (c, g) {
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
+
+        g.fillStyle = 'rgb(128, 128, 0)'
+    	g.fillRect(10, 18, 20, 4)
+    	g.fillRect(18, 10, 4, 20)
+    	g.fillStyle = 'rgb(0, 0, 0)'
+    	g.fillRect(18, 18, 4, 4)
+    }, 'cross_gate')
+    create_radio_button(function (c, g) {
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
+        g.fillStyle = 'rgb(255, 128, 0)'
+        g.fillRect(14, 14, 12, 12)
+        g.fillStyle = 'rgb(255, 255, 0)'
+        g.fillRect(10, 14, 4, 4)
+        g.fillRect(26, 18, 4, 4)
+        g.fillStyle = 'rgb(80, 80, 0)'
+        g.fillRect(10, 22, 4, 4)
+    }, function (c, g) {
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
+        g.fillStyle = 'rgb(128, 64, 0)'
+        g.fillRect(14, 14, 12, 12)
+        g.fillStyle = 'rgb(80, 80, 0)'
+        g.fillRect(10, 14, 4, 4)
+        g.fillRect(26, 18, 4, 4)
+        g.fillRect(10, 22, 4, 4)
+    }, 'or_gate')
+    create_radio_button(function (c, g) {
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
+        g.fillStyle = 'rgb(0, 0, 255)'
+        g.fillRect(14, 14, 12, 12)
+        g.fillStyle = 'rgb(255, 255, 0)'
+        g.fillRect(10, 14, 4, 4)
+        g.fillRect(26, 18, 4, 4)
+        g.fillRect(10, 22, 4, 4)
+    }, function (c, g) {
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
+        g.fillStyle = 'rgb(0, 0, 128)'
+        g.fillRect(14, 14, 12, 12)
+        g.fillStyle = 'rgb(80, 80, 0)'
+        g.fillRect(10, 14, 4, 4)
+        g.fillRect(26, 18, 4, 4)
+        g.fillRect(10, 22, 4, 4)
+    }, 'and_gate')
+    create_radio_button(function (c, g) {
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
+        g.fillStyle = 'rgb(255, 0, 255)'
+        g.fillRect(14, 14, 12, 12)
+        g.fillStyle = 'rgb(255, 255, 0)'
+        g.fillRect(26, 18, 4, 4)
+        g.fillStyle = 'rgb(80, 80, 0)'
+        g.fillRect(10, 14, 4, 4)
+        g.fillRect(10, 22, 4, 4)
+    }, function (c, g) {
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
+        g.fillStyle = 'rgb(128, 0, 128)'
+        g.fillRect(14, 14, 12, 12)
+        g.fillStyle = 'rgb(255, 255, 0)'
+        g.fillRect(10, 14, 4, 4)
+        g.fillRect(10, 22, 4, 4)
+        g.fillStyle = 'rgb(80, 80, 0)'
+        g.fillRect(26, 18, 4, 4)
+    }, 'nand_gate')
+    create_radio_button(function (c, g) {
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
+
+        g.fillStyle = 'rgb(0, 255, 255)'
+        g.fillRect(14, 14, 12, 12)
+        g.fillStyle = 'rgb(255, 255, 0)'
+        g.fillRect(26, 18, 4, 4)
+    }, function (c, g) {
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
+
+        g.fillStyle = 'rgb(0, 128, 128)'
+        g.fillRect(14, 14, 12, 12)
+        g.fillStyle = 'rgb(80, 80, 0)'
+        g.fillRect(26, 18, 4, 4)
+    }, 'toggle')
+    create_radio_button(function (c, g) {
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
+
+    	g.beginPath()
+    	g.moveTo(10, 10)
+    	g.lineTo(30, 30)
+    	g.moveTo(10, 30)
+    	g.lineTo(30, 10)
+    	g.lineWidth = 4
+    	g.strokeStyle = 'rgb(255, 0, 0)'
+    	g.stroke()
+    }, function (c, g) {
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
+
+    	g.beginPath()
+    	g.moveTo(10, 10)
+    	g.lineTo(30, 30)
+    	g.moveTo(10, 30)
+    	g.lineTo(30, 10)
+    	g.lineWidth = 1
+    	g.strokeStyle = 'rgb(128, 0, 0)'
+    	g.stroke()
+    }, 'delete')
+    create_radio_button(function (c, g) {
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
+
+    	g.fillStyle = 'rgb(255, 0, 0)'
+    	g.fillRect(10, 10, 20, 20)
+    }, function (c, g) {
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
+
+    	g.fillStyle = 'rgb(128, 0, 0)'
+    	g.fillRect(10, 10, 20, 20)
+    }, 'box', true)
+
+    document.addEventListener('keydown', function (e) {
         if (view.brush == 'box' && e.keyCode == 8 && view.box && view.box.length == 4) {
             // 8 = DELETE
             var changes = {}
@@ -165,7 +461,7 @@ function draw_palette() {
             var changes = {}
             var the_dead = delete_view_box(changes)
             each(the_dead, function (_) {
-                var x = view.box[0] + (view.box[2] - view.box[0]) - (_.x - view.box[0]) - (stuff_sizes[_.t] - 1)
+                var X = view.box[0] + (view.box[2] - view.box[0]) - (_.x - view.box[0]) - (stuff_sizes[_.t] - 1)
                 var Y = _.y
                 changes[X + ',' + Y] = {
                     x : X,
@@ -181,7 +477,7 @@ function draw_palette() {
             var changes = {}
             var the_dead = delete_view_box(changes)
             each(the_dead, function (_) {
-                var x = _.x
+                var X = _.x
                 var Y = view.box[1] + (view.box[3] - view.box[1]) - (_.y - view.box[1]) - (stuff_sizes[_.t] - 1)
                 changes[X + ',' + Y] = {
                     x : X,
@@ -210,117 +506,6 @@ function draw_palette() {
             view.box = [view.box[0], view.box[1], view.box[3] - view.box[1] + view.box[0], view.box[2] - view.box[0] + view.box[1]]
             update_model(changes)
         }
-    })
-    d.append(key_capture_box)
-
-    function create_button(text, onclick) {
-        var b = document.createElement('button')
-        b.style.width = PALETTE_HEIGHT*2 + 'px'
-        b.style.height = PALETTE_HEIGHT + 'px'
-        b.textContent = text
-        b.onclick = onclick
-        d.append(b)
-        return b
-    }
-    
-    create_button('+', function () {
-        view.scale *= 2
-        zoom_thing.value = view.scale
-        render()
-    })
-    
-    function create_zoom_thing() {
-        var b = document.createElement('input')
-        b.style.width = 30 + 'px'
-        b.value = view.scale
-        b.oninput = function () {
-            view.scale = 1*b.value
-            render()
-        }
-        d.append(b)
-        return b
-    }
-    var zoom_thing = create_zoom_thing()
-
-    create_button('-', function () {
-        view.scale = Math.floor(view.scale/2)
-        zoom_thing.value = view.scale
-        render()
-    })
-    
-    function create_location_viewer() {
-        var b = document.createElement('input')
-        b.style.width = 50 + 'px'
-        b.value = 'x,y'
-        d.append(b)
-        return b
-    }
-    location_viewer = create_location_viewer()
-    
-    
-    create_button('stop', function () {
-        view.play = !view.play
-        this.textContent = view.play ? 'stop' : 'play'
-        render()
-    })
-    
-    create_button('set', function () {
-        var j = prompt('give me some JSON:')
-        if (j) j = JSON.parse(j)
-        if (j) set_new_model(j)
-    })
-    
-    create_button('get', function () {
-        key_capture_box.value = JSON.stringify(model)
-        key_capture_box.focus()
-        key_capture_box.setSelectionRange(0, key_capture_box.value.length)
-    })
-    
-    create_button('reset', function () {
-        var changes = {}
-        each(model, function (_, key) {
-            changes[key] = {
-                x : _.x,
-                y : _.y,
-                t : _.t,
-                c : -1,
-                v : 0
-            }
-        })
-        update_model(changes, true)
-    })
-    
-    create_button('shock', function () {
-        var s = prompt('give me some jsOn!?!:')
-        if (s) {
-            view.shocker = JSON.parse(s)
-            view.shocks = (view.shocks || 0) + 50
-        }
-    })
-
-    // radio buttons
-    var radio_buttons = []
-    
-    function create_radio_button(text, brush, cb) {
-        var b = create_button(text, function () {
-            view.brush = brush
-            if (cb) cb()
-            each(radio_buttons, function (x) { x.style.background = 'grey' })
-            this.style.background = 'gold'
-        })
-        radio_buttons.push(b)
-        b.onclick()
-    }
-    
-    create_radio_button('WIRE', 'wire')
-    create_radio_button('CROSS', 'cross_gate')
-    create_radio_button('OR', 'or_gate')
-    create_radio_button('AND', 'and_gate')
-    create_radio_button('NAND', 'nand_gate')
-    create_radio_button('TOGGLE', 'toggle')
-    create_radio_button('delete', 'delete')
-    create_radio_button('box', 'box', function () {
-        key_capture_box.focus()
     })
 
     return d
@@ -643,7 +828,7 @@ c.onmousemove = function (e) {
     var pos = getRelPos(c, e)
     var x = Math.floor((pos.x - c.width/2) / view.scale + view.x)
     var y = Math.floor((pos.y - c.height/2) / view.scale + view.y)
-    location_viewer.value = x + ',' + y
+    // work here : display this somewhere
 }
 
 c.onmousedown = function (e) {
