@@ -2,26 +2,14 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>logik.land</title>
 </head>
-<script src="cpu004.js"></script>
-<script src="https://www.gstatic.com/firebasejs/5.5.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/5.5.0/firebase-auth.js"></script>
-<script src="https://www.gstatic.com/firebasejs/5.5.0/firebase-firestore.js"></script>
 <body style="margin:0px"></body>
 <script>
 
-var config = {
-	apiKey: "AIzaSyA1Ez59Q8I7ayjalvcLGKMAj-Gxt9tdsnY",
-	authDomain: "logikland-55dfb.firebaseapp.com",
-	databaseURL: "https://logikland-55dfb.firebaseio.com",
-	projectId: "logikland-55dfb",
-	storageBucket: "logikland-55dfb.appspot.com",
-	messagingSenderId: "179129725350"
-}
-var db = firebase.initializeApp(config).firestore()
-db.settings({ timestampsInSnapshots : true })
-
-var uid = null
-var did_first_save = false
+var url_params = {}
+location.search.substr(1).split('&').forEach(function (x) {
+    var y = x.split('=')
+    url_params[y[0]] = decodeURIComponent(y[1])
+})
 
 var PALETTE_HEIGHT = 20
 var LOOP_INTERVAL = 20 // 20
@@ -41,19 +29,44 @@ var version = 0
 var model = {} // { x: , y: , t: , c: , v: } (t=type, c=charge, v=version)
 
 var stuff_sizes = {
-    'wire' : 1,
-    'cross_gate' : 1,
-    'and_gate' : 3,
-    'or_gate' : 3,
-    'nand_gate' : 3,
-    'toggle' : 3
+    wire : 1,
+    cross_gate : 1,
+    and_gate : 3,
+    or_gate : 3,
+    nand_gate : 3,
+    toggle : 3
+}
+
+var stuff_colors = {
+    wire : {
+        on : [255, 255, 0],
+        off : [80, 80, 0]
+    },
+    cross_gate : {
+        on : [0, 0, 0],
+        off : [0, 0, 0]
+    },
+    or_gate : {
+        on : [255, 128, 0],
+        off : [128, 64, 0]
+    },
+    and_gate : {
+        on : [0, 0, 255],
+        off : [0, 0, 128]
+    },
+    nand_gate : {
+        on : [255, 0, 255],
+        off : [128, 0, 128]
+    },
+    toggle : {
+        on : [0, 255, 255],
+        off : [0, 128, 128]
+    }
 }
 
 var wave_front = {}
 
-var unsaved_changes = {}
-
-function update_model(changes, dontUpdateFirebase) {
+function update_model(changes) {
     each(changes, function (_, key) {
         if (_) {
             model[key] = _
@@ -71,22 +84,9 @@ function update_model(changes, dontUpdateFirebase) {
     render_prep()
 
     render()
-
-	if (!dontUpdateFirebase && location.hash.substr(1)) {
-		Object.assign(unsaved_changes, changes)
-		if (uid) {
-			if (!did_first_save)
-				unsaved_changes.uid = uid
-
-			db.collection('chips').doc(location.hash.substr(1)).set(unsaved_changes, { merge : true })
-
-			did_first_save = true
-			unsaved_changes = {}
-		}
-	}
 }
 
-function set_new_model(new_model, dontUpdateFirebase) {
+function set_new_model(new_model) {
     var changes = {}
     each(model, function (_, key) {
         changes[key] = null
@@ -94,24 +94,7 @@ function set_new_model(new_model, dontUpdateFirebase) {
     each(new_model, function (_, key) {
         changes[key] = _
     })
-    unsaved_changes = {}
-    update_model(changes, dontUpdateFirebase)
-}
-
-function fetch_model() {
-	if (location.hash.substr(1)) {
-		db.collection('chips').doc(location.hash.substr(1)).get().then(function (x) {
-			x = x.data()
-			if (x) {
-				delete x.uid
-			} else {
-				x = {}
-			}
-	        set_new_model(x, true)
-		})
-	} else {
-		set_new_model(cpu004, true)
-	}
+    update_model(changes)
 }
 
 function copy_view_box() {
@@ -148,7 +131,48 @@ function get_thing_at(x, y) {
 function draw_palette() {
     var d = document.createElement('div')
     d.style.width = '100%'
-    d.style.height = PALETTE_HEIGHT*2 + 'px'
+
+    if (window.innerWidth / 40 < 13) {
+	    d.style.height = '80px'
+    } else {
+	    d.style.height = '40px'
+    }
+
+    function createLogo() {
+        var b = document.createElement('div')
+        b.style.background = 'white'
+        b.style.display = 'inline-block'
+        b.style.width = '80px'
+        b.style.height = '40px'
+        b.onclick = function () {
+        }
+
+        var c = document.createElement('canvas')
+        c.width = 80
+        c.height = 40
+        var g = c.getContext('2d')
+
+		g.fillStyle = 'black'
+		var logo = `
+			X...XXX.XXX.X.X..X..X....X..X..X.XX.
+			X...X.X.X.....X.X...X...X.X.XX.X.X.X
+			X...X.X.X.X.X.XX....X...XXX.X.XX.X.X
+			X...X.X.X.X.X.X.X...X...X.X.X..X.X.X
+			XXX.XXX.XXX.X.X.X.X.XXX.X.X.X..X.XX.
+		`
+		each(logo.trim().split(/\r?\n/), function (row, ri) {
+			row = row.trim()
+			for (var i = 0; i < row.length; i++) {
+				if (row[i] == 'X') {
+					g.fillRect(i * 2, ri * 2, 2, 2)
+				}
+			}
+		})
+
+        b.append(c)
+        d.append(b)
+    }
+    createLogo()
 
     function drawMagnifyingGlass(c, g) {
         g.beginPath()
@@ -259,6 +283,143 @@ function draw_palette() {
     }
     createStopButton()
 
+    var last_save_url = null
+    function createSaveButton() {
+        var b = document.createElement('div')
+        b.style.background = 'white'
+        b.style.display = 'inline-block'
+        b.style.width = '40px'
+        b.style.height = '40px'
+
+        var c = document.createElement('canvas')
+        c.width = 40
+        c.height = 40
+        var g = c.getContext('2d')
+
+        g.fillStyle = 'black'
+        g.beginPath()
+        g.moveTo(10, 20)
+        g.lineTo(30, 20)
+        g.lineTo(20, 30)
+        g.fill()
+        g.fillRect(18, 10, 4, 10)
+        g.fillRect(10, 29, 20, 1)
+
+        b.onclick = function () {
+            var a = document.createElement('a')
+            if (last_save_url)
+                window.URL.revokeObjectURL(last_save_url)
+            last_save_url = window.URL.createObjectURL(new Blob([JSON.stringify(model)], { type : 'text/plain' }))
+            a.setAttribute('href', last_save_url)
+            a.setAttribute('download', 'chip.txt')
+            a.style.display = 'none'
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+
+            // var a = document.createElement('a')
+            // a.setAttribute('href', render_prep_canvas.toDataURL('image/png'))
+            // a.setAttribute('download', 'chip.png')
+            // a.style.display = 'none'
+            // document.body.appendChild(a)
+            // a.click()
+            // document.body.removeChild(a)
+        }
+
+        b.append(c)
+        d.append(b)
+    }
+    createSaveButton()
+
+    function createUploadButton() {
+        var b = document.createElement('div')
+        b.style.background = 'white'
+        b.style.display = 'inline-block'
+        b.style.width = '40px'
+        b.style.height = '40px'
+
+        var c = document.createElement('canvas')
+        c.width = 40
+        c.height = 40
+        var g = c.getContext('2d')
+
+        g.fillStyle = 'black'
+        g.beginPath()
+        g.moveTo(10, 20)
+        g.lineTo(30, 20)
+        g.lineTo(20, 10)
+        g.fill()
+        g.fillRect(18, 20, 4, 10)
+        g.fillRect(10, 10, 20, 1)
+
+        b.onclick = function () {
+            var inp = document.createElement('input')
+            inp.setAttribute('type', 'file')
+            inp.onchange = function () {
+                if (this.files.length == 1) {
+                    var r = new FileReader()
+                    r.onload = function (e) {
+                        set_new_model(JSON.parse(e.target.result))
+
+                        // var im = new Image()
+                        // im.onload = function () {
+                        //     var c = document.createElement('canvas')
+                        //     c.width = im.width
+                        //     c.height = im.height
+                        //     var g = c.getContext('2d')
+                        //     g.drawImage(im, 0, 0, im.width, im.height)
+                        //     var data = g.getImageData(0, 0, im.width, im.height).data
+                        //     var new_model = {}
+                        //     var i = 0
+                        //     for (var y = 0; y < im.height; y++) {
+                        //         for (var x = 0; x < im.width; x++) {
+                        //             var R = data[i++]
+                        //             var G = data[i++]
+                        //             var B = data[i++]
+                        //             var A = data[i++]
+
+                        //             var found_overlapping_gate = false
+                        //             for (var yy = -2; yy <= 0; yy++) {
+                        //                 for (var xx = -2; xx <= 0; xx++) {
+                        //                     var thing = new_model[(x + xx) + ',' + (y + yy)]
+                        //                     if (thing && (stuff_sizes[thing.t] == 3)) {
+                        //                         found_overlapping_gate = true
+                        //                     }
+                        //                 }
+                        //             }
+                        //             if (found_overlapping_gate) continue
+
+                        //             function color_comp(x) {
+                        //                 return x[0] == R && x[1] == G && x[2] == B && A == 255
+                        //             }
+                        //             each(stuff_colors, function (color, thing) {
+                        //                 if (color_comp(color.on)) {
+                        //                     new_model[x + ',' + y] = { x : x, y : y, t : thing, c : 1, v : 0 }
+                        //                 }
+                        //                 if (color_comp(color.off)) {
+                        //                     new_model[x + ',' + y] = { x : x, y : y, t : thing, c : -1, v : 0 }
+                        //                 }
+                        //             })
+                        //         }
+                        //     }
+                        //     set_new_model(new_model)
+                        // }
+                        // im.src = r.result
+                    }
+                    r.readAsText(this.files[0])
+                }
+                document.body.removeChild(inp)
+            }
+            inp.style.display = 'none'
+            document.body.append(inp)
+            inp.click()
+        }
+
+        b.append(c)
+        d.append(b)
+    }
+    createUploadButton()
+
     var radio_buttons = {}
     
     function create_radio_button(drawOn, drawOff, brush, clickRightAway) {
@@ -309,7 +470,7 @@ function draw_palette() {
 
         g.fillStyle = 'rgb(255, 255, 0)'
     	g.fillRect(10, 18, 20, 4)
-    	g.fillRect(18, 10, 4, 20)
+    	g.fillRect(18, 14, 4, 12)
     	g.fillStyle = 'rgb(0, 0, 0)'
     	g.fillRect(18, 18, 4, 4)
     }, function (c, g) {
@@ -318,7 +479,7 @@ function draw_palette() {
 
         g.fillStyle = 'rgb(128, 128, 0)'
     	g.fillRect(10, 18, 20, 4)
-    	g.fillRect(18, 10, 4, 20)
+    	g.fillRect(18, 14, 4, 12)
     	g.fillStyle = 'rgb(0, 0, 0)'
     	g.fillRect(18, 18, 4, 4)
     }, 'cross_gate')
@@ -441,13 +602,19 @@ function draw_palette() {
     	g.fillRect(4, 4, 32, 32)
 
     	g.fillStyle = 'rgb(255, 0, 0)'
-    	g.fillRect(10, 10, 20, 20)
+    	g.fillRect(10, 10, 20, 4)
+        g.fillRect(10, 10, 4, 20)
+        g.fillRect(10 + 20 - 4, 10, 4, 20)
+        g.fillRect(10, 10 + 20 - 4, 20, 4)
     }, function (c, g) {
     	g.fillStyle = 'rgb(0, 40, 0)'
     	g.fillRect(0, 0, 40, 40)
 
-    	g.fillStyle = 'rgb(128, 0, 0)'
-    	g.fillRect(10, 10, 20, 20)
+        g.fillStyle = 'rgb(128, 0, 0)'
+        g.fillRect(10, 10, 20, 1)
+        g.fillRect(10, 10, 1, 20)
+        g.fillRect(10 + 20 - 1, 10, 1, 20)
+        g.fillRect(10, 10 + 20 - 1, 20, 1)
     }, 'box', true)
 
     document.addEventListener('keydown', function (e) {
@@ -510,13 +677,14 @@ function draw_palette() {
 
     return d
 }
-document.body.append(draw_palette())
+if (!url_params.hide_palette)
+    document.body.append(draw_palette())
 
 var c = document.createElement('canvas')
 c.width = window.innerWidth * window.devicePixelRatio
-c.height = (window.innerHeight - PALETTE_HEIGHT*2) * window.devicePixelRatio
+c.height = (window.innerHeight - (url_params.hide_palette ? 0 : PALETTE_HEIGHT*2)) * window.devicePixelRatio
 c.style.width = window.innerWidth
-c.style.height = window.innerHeight - PALETTE_HEIGHT*2
+c.style.height = window.innerHeight - (url_params.hide_palette ? 0 : PALETTE_HEIGHT*2)
 var g = c.getContext('2d')
 document.body.append(c)
 
@@ -676,17 +844,13 @@ function set_pixel(x, y, color) {
 
 function draw_thing(_) {
     if (_.t == 'wire') {
-        set_pixel(_.x, _.y, _.c > 0 ? [255, 255, 0] : [80, 80, 0])
+        set_pixel(_.x, _.y, _.c > 0 ? stuff_colors.wire.on : stuff_colors.wire.off)
     } else if (_.t == 'cross_gate') {
-        set_pixel(_.x, _.y, [0, 0, 0])
+        set_pixel(_.x, _.y, _.c > 0 ? stuff_colors.cross_gate.on : stuff_colors.cross_gate.off)
     } else {
-        var fac = _.c > 0 ? 1 : 0.5
-        var color = 
-            (_.t == 'or_gate') ? [fac * 255, fac * 128, 0] :
-            (_.t == 'and_gate') ? [0, 0, fac * 255] :
-            (_.t == 'nand_gate') ? [fac * 255, 0, fac * 255] :
-            (_.t == 'toggle') ? [0, fac * 255, fac * 255] :
-            [255, 0, 0]
+        var color = stuff_colors[_.t]
+        if (!color) color = [255, 0, 0]
+        else color = _.c > 0 ? color.on : color.off
         for (var yy = 0; yy < 3; yy++) {
             for (var xx = 0; xx < 3; xx++) {
                 set_pixel(_.x + xx, _.y + yy, color)
@@ -806,30 +970,20 @@ function loop() {
     setTimeout(loop, LOOP_INTERVAL)
 }
 
-firebase.auth().onAuthStateChanged(function(user) {
-    if (user) {
-        uid = user.uid
-        did_first_save = false
-        update_model({})
-    } else {
-    	uid = null
-    }
-})
-firebase.auth().signInAnonymously()
-
-fetch_model()
-window.addEventListener('hashchange', function () {
-	fetch_model()
-}, false)
-
 loop()
 
-c.onmousemove = function (e) {
-    var pos = getRelPos(c, e)
-    var x = Math.floor((pos.x - c.width/2) / view.scale + view.x)
-    var y = Math.floor((pos.y - c.height/2) / view.scale + view.y)
-    // work here : display this somewhere
+wget = function (url, cb) {
+    var r = new XMLHttpRequest()
+    r.addEventListener("load", function () {
+        cb(this.responseText)
+    })
+    r.open("GET", url)
+    r.send()
 }
+
+wget(url_params.chip || 'cpu004.txt', function (x) {
+    set_new_model(JSON.parse(x))
+})
 
 c.onmousedown = function (e) {
     e.preventDefault()
@@ -841,8 +995,8 @@ c.onmousedown = function (e) {
         var new_pos = getRelPos(c, e)
         moved = true
         
-        view.x -= (new_pos.x - old_pos.x) / view.scale
-        view.y -= (new_pos.y - old_pos.y) / view.scale
+        view.x -= (new_pos.x - old_pos.x) * window.devicePixelRatio / view.scale
+        view.y -= (new_pos.y - old_pos.y) * window.devicePixelRatio / view.scale
         render()
         
         old_pos = new_pos
@@ -855,188 +1009,221 @@ c.onmousedown = function (e) {
 
         if (!moved) {
             var new_pos = getRelPos(c, e)
+            my_on_mouse_up(new_pos, e)
+        }
+    }
+}
 
-            var x = Math.floor((new_pos.x - c.width/2) / view.scale + view.x)
-            var y = Math.floor((new_pos.y - c.height/2) / view.scale + view.y)
-            var key = x + ',' + y
-            
-            var changes = {}
-            
-            var clicked_thing = get_thing_at(x, y)
+c.ontouchstart = function (e) {
+    e.preventDefault()
+    var old_pos = getRelPos(c, e.touches[0])
+    var moved = false
 
-            if (view.brush == 'box') {
-                if (e.shiftKey && view.box && view.box.length == 4) {
-                    if (e.metaKey) {
-                        var the_dead = delete_view_box(changes)
-                        each(the_dead, function (_) {
-                            var X = _.x - view.box[0] + x
-                            var Y = _.y - view.box[1] + y
-                            changes[X + ',' + Y] = {
-                                x : X,
-                                y : Y,
-                                t : _.t,
-                                c : _.c,
-                                v : _.v
-                            }
-                        })
-                        view.box = [x, y, view.box[2] - view.box[0] + x, view.box[3] - view.box[1] + y]
-                        view.copy = copy_view_box()
-                    } else {
-                        each(view.copy, function (_) {
-                            var X = _.x - view.box[0] + x
-                            var Y = _.y - view.box[1] + y
-                            changes[X + ',' + Y] = {
-                                x : X,
-                                y : Y,
-                                t : _.t,
-                                c : _.c,
-                                v : _.v
-                            }
-                        })
+    var oldMove = document.ontouchmove
+    document.ontouchmove = function (e) {
+        var new_pos = getRelPos(c, e.touches[0])
+        moved = true
+        
+        view.x -= (new_pos.x - old_pos.x) * window.devicePixelRatio / view.scale
+        view.y -= (new_pos.y - old_pos.y) * window.devicePixelRatio / view.scale
+        render()
+        
+        old_pos = new_pos
+    }
+    
+    var oldEnd = document.ontouchend;
+    var oldCancel = document.ontouchcancel
+    document.ontouchend = document.ontouchcancel = function (e) {
+        document.ontouchmove = oldMove
+        document.ontouchend = oldEnd
+        document.ontouchcancel = oldCancel;
+
+        if (!moved) {
+            my_on_mouse_up(old_pos, e)
+        }
+    }
+}
+
+function my_on_mouse_up(new_pos, e) {
+    var x = Math.floor((new_pos.x * window.devicePixelRatio - c.width/2) / view.scale + view.x)
+    var y = Math.floor((new_pos.y * window.devicePixelRatio - c.height/2) / view.scale + view.y)
+    var key = x + ',' + y
+    
+    var changes = {}
+    
+    var clicked_thing = get_thing_at(x, y)
+
+    if (view.brush == 'box') {
+        if (e.shiftKey && view.box && view.box.length == 4) {
+            if (e.metaKey) {
+                var the_dead = delete_view_box(changes)
+                each(the_dead, function (_) {
+                    var X = _.x - view.box[0] + x
+                    var Y = _.y - view.box[1] + y
+                    changes[X + ',' + Y] = {
+                        x : X,
+                        y : Y,
+                        t : _.t,
+                        c : _.c,
+                        v : _.v
                     }
-                } else {
-                    if (!view.box || view.box.length == 4) {
-                        view.box = [x, y]
-                    } else {
-                        view.box = [
-                            Math.min(view.box[0], x),
-                            Math.min(view.box[1], y),
-                            Math.max(view.box[0], x),
-                            Math.max(view.box[1], y)
-                        ]
-                        view.copy = copy_view_box()
+                })
+                view.box = [x, y, view.box[2] - view.box[0] + x, view.box[3] - view.box[1] + y]
+                view.copy = copy_view_box()
+            } else {
+                each(view.copy, function (_) {
+                    var X = _.x - view.box[0] + x
+                    var Y = _.y - view.box[1] + y
+                    changes[X + ',' + Y] = {
+                        x : X,
+                        y : Y,
+                        t : _.t,
+                        c : _.c,
+                        v : _.v
                     }
-                }
-            } else if (view.brush == 'delete') {
-                if (e.shiftKey) {
-                    function delete_wires_at(x, y) {
-                        var key = x + ',' + y
-                        var _ = model[key]
-                        if (_ && _.t == 'wire') {
-                            changes[key] = null
-                        } else if (_ && _.t == 'cross_gate') {
-                            changes[key] = {
-                                x : _.x,
-                                y : _.y,
-                                t : 'wire',
-                                c : -1,
-                                v : 0
-                            }
-                        }
-                    }
-                    var dx = x - view.prev_x
-                    var dy = y - view.prev_y
-                    if (Math.abs(dx) > Math.abs(dy)) {
-                        if (dx > 0)
-                            for (var i = view.prev_x; i <= x; i++)
-                                delete_wires_at(i, view.prev_y)
-                        else
-                            for (var i = x; i <= view.prev_x; i++)
-                                delete_wires_at(i, view.prev_y)
-                    } else {
-                        if (dy > 0)
-                            for (var i = view.prev_y; i <= y; i++)
-                                delete_wires_at(view.prev_x, i)
-                        else
-                            for (var i = y; i <= view.prev_y; i++)
-                                delete_wires_at(view.prev_x, i)
-                    }
-                } else if (clicked_thing) {
-                    changes[clicked_thing.x + ',' + clicked_thing.y] = null
-                }
-            } else if (clicked_thing && clicked_thing.t == 'toggle') {
-                clicked_thing.cc = (clicked_thing.cc || -1) * -1
-                wave_front[clicked_thing.x + ',' + clicked_thing.y] = {
-                    x : clicked_thing.x,
-                    y : clicked_thing.y
-                }
-                return
-            } else if (view.brush == 'wire') {
-                function add_wire(x, y, direction) {
-                    if (direction == 'horz') {
-                        if (model[x + ',' + y] &&
-                            model[x + ',' + y].t == 'wire' &&
-                            model[x + ',' + (y - 1)] &&
-                            model[x + ',' + (y - 1)].t == 'wire' &&
-                            model[x + ',' + (y + 1)] &&
-                            model[x + ',' + (y + 1)].t == 'wire') {
-                            changes[x + ',' + y] = {
-                                x : x,
-                                y : y,
-                                t : 'cross_gate',
-                                c : -1,
-                                v : 0
-                            }
-                            return
-                        }
-                    }
-                    if (direction == 'vert') {
-                        if (model[x + ',' + y] &&
-                            model[x + ',' + y].t == 'wire' &&
-                            model[(x - 1) + ',' + y] &&
-                            model[(x - 1) + ',' + y].t == 'wire' &&
-                            model[(x + 1) + ',' + y] &&
-                            model[(x + 1) + ',' + y].t == 'wire') {
-                            changes[x + ',' + y] = {
-                                x : x,
-                                y : y,
-                                t : 'cross_gate',
-                                c : -1,
-                                v : 0
-                            }
-                            return
-                        }
-                    }
-                    changes[x + ',' + y] = {
-                        x : x,
-                        y : y,
+                })
+            }
+        } else {
+            if (!view.box || view.box.length == 4) {
+                view.box = [x, y]
+            } else {
+                view.box = [
+                    Math.min(view.box[0], x),
+                    Math.min(view.box[1], y),
+                    Math.max(view.box[0], x),
+                    Math.max(view.box[1], y)
+                ]
+                view.copy = copy_view_box()
+            }
+        }
+    } else if (view.brush == 'delete') {
+        if (e.shiftKey) {
+            function delete_wires_at(x, y) {
+                var key = x + ',' + y
+                var _ = model[key]
+                if (_ && _.t == 'wire') {
+                    changes[key] = null
+                } else if (_ && _.t == 'cross_gate') {
+                    changes[key] = {
+                        x : _.x,
+                        y : _.y,
                         t : 'wire',
                         c : -1,
                         v : 0
                     }
                 }
-                if (e.shiftKey) {
-                    var dx = x - view.prev_x
-                    var dy = y - view.prev_y
-                    if (Math.abs(dx) > Math.abs(dy)) {
-                        if (dx > 0) {
-                            for (var i = view.prev_x; i <= x; i++)
-                                add_wire(i, view.prev_y, 'horz')
-                        } else {
-                            for (var i = x; i <= view.prev_x; i++)
-                                add_wire(i, view.prev_y, 'horz')
-                        }
-                    } else {
-                        if (dy > 0) {
-                            for (var i = view.prev_y; i <= y; i++)
-                                add_wire(view.prev_x, i, 'vert')
-                        } else {
-                            for (var i = y; i <= view.prev_y; i++)
-                                add_wire(view.prev_x, i, 'vert')
-                        }
-                    }
-                } else {
-                    add_wire(x, y)
-                }
+            }
+            var dx = x - view.prev_x
+            var dy = y - view.prev_y
+            if (Math.abs(dx) > Math.abs(dy)) {
+                if (dx > 0)
+                    for (var i = view.prev_x; i <= x; i++)
+                        delete_wires_at(i, view.prev_y)
+                else
+                    for (var i = x; i <= view.prev_x; i++)
+                        delete_wires_at(i, view.prev_y)
             } else {
-                if (clicked_thing) {
-                    changes[clicked_thing.x + ',' + clicked_thing.y] = null
-                }
-                changes[key] = {
-                    x : x,
-                    y : y,
-                    t : view.brush,
-                    c : -1,
-                    v : 0
+                if (dy > 0)
+                    for (var i = view.prev_y; i <= y; i++)
+                        delete_wires_at(view.prev_x, i)
+                else
+                    for (var i = y; i <= view.prev_y; i++)
+                        delete_wires_at(view.prev_x, i)
+            }
+        } else if (clicked_thing) {
+            changes[clicked_thing.x + ',' + clicked_thing.y] = null
+        }
+    } else if (clicked_thing && clicked_thing.t == 'toggle') {
+        clicked_thing.cc = (clicked_thing.cc || -1) * -1
+        wave_front[clicked_thing.x + ',' + clicked_thing.y] = {
+            x : clicked_thing.x,
+            y : clicked_thing.y
+        }
+        return
+    } else if (view.brush == 'wire') {
+        function add_wire(x, y, direction) {
+            if (direction == 'horz') {
+                if (model[x + ',' + y] &&
+                    model[x + ',' + y].t == 'wire' &&
+                    model[x + ',' + (y - 1)] &&
+                    model[x + ',' + (y - 1)].t == 'wire' &&
+                    model[x + ',' + (y + 1)] &&
+                    model[x + ',' + (y + 1)].t == 'wire') {
+                    changes[x + ',' + y] = {
+                        x : x,
+                        y : y,
+                        t : 'cross_gate',
+                        c : -1,
+                        v : 0
+                    }
+                    return
                 }
             }
-            
-            view.prev_x = x
-            view.prev_y = y
-            
-            update_model(changes)
+            if (direction == 'vert') {
+                if (model[x + ',' + y] &&
+                    model[x + ',' + y].t == 'wire' &&
+                    model[(x - 1) + ',' + y] &&
+                    model[(x - 1) + ',' + y].t == 'wire' &&
+                    model[(x + 1) + ',' + y] &&
+                    model[(x + 1) + ',' + y].t == 'wire') {
+                    changes[x + ',' + y] = {
+                        x : x,
+                        y : y,
+                        t : 'cross_gate',
+                        c : -1,
+                        v : 0
+                    }
+                    return
+                }
+            }
+            changes[x + ',' + y] = {
+                x : x,
+                y : y,
+                t : 'wire',
+                c : -1,
+                v : 0
+            }
+        }
+        if (e.shiftKey) {
+            var dx = x - view.prev_x
+            var dy = y - view.prev_y
+            if (Math.abs(dx) > Math.abs(dy)) {
+                if (dx > 0) {
+                    for (var i = view.prev_x; i <= x; i++)
+                        add_wire(i, view.prev_y, 'horz')
+                } else {
+                    for (var i = x; i <= view.prev_x; i++)
+                        add_wire(i, view.prev_y, 'horz')
+                }
+            } else {
+                if (dy > 0) {
+                    for (var i = view.prev_y; i <= y; i++)
+                        add_wire(view.prev_x, i, 'vert')
+                } else {
+                    for (var i = y; i <= view.prev_y; i++)
+                        add_wire(view.prev_x, i, 'vert')
+                }
+            }
+        } else {
+            add_wire(x, y)
+        }
+    } else {
+        if (clicked_thing) {
+            changes[clicked_thing.x + ',' + clicked_thing.y] = null
+        }
+        changes[key] = {
+            x : x,
+            y : y,
+            t : view.brush,
+            c : -1,
+            v : 0
         }
     }
+    
+    view.prev_x = x
+    view.prev_y = y
+    
+    update_model(changes)
 }
 
 function getPos(e) {
