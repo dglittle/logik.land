@@ -6,19 +6,24 @@
 <script>
 
 var url_params = {}
-location.search.substr(1).split('&').forEach(function (x) {
+location.hash.substr(1).split(',').forEach(function (x) {
     var y = x.split('=')
-    url_params[y[0]] = decodeURIComponent(y[1])
+    url_params[y[0]] = y[1]
 })
 
 var PALETTE_HEIGHT = 20
 var LOOP_INTERVAL = 20 // 20
 
+var c = null
+var g = null
+var render_prep_image_data = null
+var render_prep_canvas = null
+var checker_canvas = null
+var checker_pattern = null
+
 var view = {
-    x : -22,
-    y : 32,
-    scale : 2,
-    brush : 'wire',
+    scale : url_params.scale || 2,
+    brush : 'toggle_toggle',
     play : true,
     prev_x : 0,
     prev_y : 0,
@@ -82,7 +87,6 @@ function update_model(changes) {
     })
     
     render_prep()
-
     render()
 }
 
@@ -130,6 +134,9 @@ function get_thing_at(x, y) {
 
 function draw_palette() {
     var d = document.createElement('div')
+    d.style.position = 'fixed'
+    d.style.left = '0px'
+    d.style.top = '0px'
     d.style.width = '100%'
 
     if (window.innerWidth / 40 < 13) {
@@ -197,8 +204,16 @@ function draw_palette() {
         b.style.width = '40px'
         b.style.height = '40px'
         b.onclick = function () {
+            var b = document.body
+            var x = (b.scrollLeft + b.clientWidth / 2) / b.scrollWidth
+            var y = (b.scrollTop + b.clientHeight / 2) / b.scrollHeight
+
 	        view.scale *= 2
+            render_prep()
 	        render()
+
+            b.scrollLeft = x * b.scrollWidth - b.clientWidth / 2
+            b.scrollTop = y * b.scrollHeight - b.clientHeight / 2
         }
 
         var c = document.createElement('canvas')
@@ -224,9 +239,17 @@ function draw_palette() {
         b.style.width = '40px'
         b.style.height = '40px'
         b.onclick = function () {
+            var b = document.body
+            var x = (b.scrollLeft + b.clientWidth / 2) / b.scrollWidth
+            var y = (b.scrollTop + b.clientHeight / 2) / b.scrollHeight
+
 	        view.scale = Math.floor(view.scale/2)
 	        if (view.scale < 1) view.scale = 1
+            render_prep()
 	        render()
+
+            b.scrollLeft = x * b.scrollWidth - b.clientWidth / 2
+            b.scrollTop = y * b.scrollHeight - b.clientHeight / 2
         }
 
         var c = document.createElement('canvas')
@@ -616,6 +639,25 @@ function draw_palette() {
         g.fillRect(10 + 20 - 1, 10, 1, 20)
         g.fillRect(10, 10 + 20 - 1, 20, 1)
     }, 'box', true)
+    create_radio_button(function (c, g) {
+        g.fillStyle = 'rgb(255, 255, 0)'
+        g.fillRect(0, 0, 40, 40)
+        g.fillStyle = 'rgb(0, 40, 0)'
+        g.fillRect(4, 4, 32, 32)
+
+        g.fillStyle = 'rgb(' + stuff_colors.toggle.on.join(',') + ')'
+        g.fillRect(14, 6, 12, 12)
+        g.fillStyle = 'rgb(' + stuff_colors.toggle.off.join(',') + ')'
+        g.fillRect(14, 22, 12, 12)
+    }, function (c, g) {
+        g.fillStyle = 'rgb(0, 40, 0)'
+        g.fillRect(0, 0, 40, 40)
+
+        g.fillStyle = 'rgb(' + stuff_colors.toggle.off.join(',') + ')'
+        g.fillRect(14, 6, 12, 12)
+        g.fillStyle = 'rgb(' + stuff_colors.toggle.off.join(',') + ')'
+        g.fillRect(14, 22, 12, 12)
+    }, 'toggle_toggle', true)
 
     document.addEventListener('keydown', function (e) {
         if (view.brush == 'box' && e.keyCode == 8 && view.box && view.box.length == 4) {
@@ -677,16 +719,6 @@ function draw_palette() {
 
     return d
 }
-if (!url_params.hide_palette)
-    document.body.append(draw_palette())
-
-var c = document.createElement('canvas')
-c.width = window.innerWidth * window.devicePixelRatio
-c.height = (window.innerHeight - (url_params.hide_palette ? 0 : PALETTE_HEIGHT*2)) * window.devicePixelRatio
-c.style.width = window.innerWidth
-c.style.height = window.innerHeight - (url_params.hide_palette ? 0 : PALETTE_HEIGHT*2)
-var g = c.getContext('2d')
-document.body.append(c)
 
 function get_adjacent(x, y) {
     return [
@@ -829,9 +861,6 @@ function propagate() {
     wave_front = new_wave_front
 }
 
-var render_prep_image_data = null
-var render_prep_canvas = null
-
 function set_pixel(x, y, color) {
     if (render_prep_image_data) {
         var base = (y - view.low_y) * render_prep_image_data.width * 4 + (x - view.low_x) * 4
@@ -887,50 +916,64 @@ function render_prep() {
     view.used_width = width
     view.used_height = height
 
-    render_prep_image_data = g.createImageData(width, height)
+    if (!c) {
+        c = document.createElement('canvas')
+        document.body.append(c)
+    }
+    c.width = Math.max(width + 200, window.innerWidth * window.devicePixelRatio)
+    c.height = Math.max(height + 200, window.innerHeight * window.devicePixelRatio)
+    c.style.width = c.width / window.devicePixelRatio * view.scale
+    c.style.height = c.height / window.devicePixelRatio * view.scale
+    c.style['image-rendering'] = 'pixelated'
+    g = c.getContext('2d')
+
+    if (!render_prep_canvas)
+        render_prep_canvas = document.createElement('canvas')
+    render_prep_canvas.width = width
+    render_prep_canvas.height = height
     
+    render_prep_image_data = g.createImageData(width, height)
     each(model, function (_, key) {
         draw_thing(_)
     })
-    
-    render_prep_canvas = document.createElement('canvas')
-    render_prep_canvas.width = width
-    render_prep_canvas.height = height
+
+    if (!checker_canvas) {
+        checker_canvas = document.createElement('canvas')
+        checker_canvas.width = 2
+        checker_canvas.height = 2
+        checker_canvas.getContext('2d').fillStyle = 'rgba(0, 32, 0, 1)'
+        checker_canvas.getContext('2d').fillRect(0, 0, 2, 2)
+        checker_canvas.getContext('2d').fillStyle = 'rgba(0, 40, 0, 1)'
+        checker_canvas.getContext('2d').fillRect(1, 0, 1, 1)
+        checker_canvas.getContext('2d').fillRect(0, 1, 1, 1)
+        checker_pattern = g.createPattern(checker_canvas, 'repeat')
+    }
 }
 
-checker_canvas = document.createElement('canvas')
-checker_canvas.width = 2
-checker_canvas.height = 2
-checker_canvas.getContext('2d').fillStyle = 'rgba(0, 32, 0, 1)'
-checker_canvas.getContext('2d').fillRect(0, 0, 2, 2)
-checker_canvas.getContext('2d').fillStyle = 'rgba(0, 40, 0, 1)'
-checker_canvas.getContext('2d').fillRect(1, 0, 1, 1)
-checker_canvas.getContext('2d').fillRect(0, 1, 1, 1)
-var checker_pattern = g.createPattern(checker_canvas, 'repeat')
-
 function render() {
-    g.setTransform(view.scale, 0, 0, view.scale,
-        Math.floor(c.width/2) - view.x*view.scale,
-        Math.floor(c.height/2) - view.y*view.scale)
-
     g.fillStyle = checker_pattern
-    g.fillRect(view.x - (c.width/2/view.scale), view.y - (c.height/2/view.scale), c.width/view.scale, c.height/view.scale)
+    g.fillRect(0, 0, c.width, c.height)
 
-    if (render_prep_canvas) {
-        render_prep_canvas.getContext('2d').putImageData(render_prep_image_data, 0, 0)
-        
-        g.imageSmoothingEnabled = false
-        g.drawImage(render_prep_canvas, view.low_x, view.low_y, view.used_width, view.used_height)
-    }
+    render_prep_canvas.getContext('2d').putImageData(render_prep_image_data, 0, 0)
+    g.imageSmoothingEnabled = false
+    var x = Math.floor((c.width - render_prep_image_data.width) / 2)
+    var y = Math.floor((c.height - render_prep_image_data.height) / 2)
+    g.drawImage(render_prep_canvas, x, y, view.used_width, view.used_height)
 
     if (view.brush == 'box' && view.box) {
         g.fillStyle = 'rgba(255,0,0,0.6)'
+
+        var ox = Math.floor((c.width - render_prep_canvas.width)/2 - view.low_x)
+        var oy = Math.floor((c.height - render_prep_canvas.height)/2 - view.low_y)
         if (view.box.length == 2)
-            g.fillRect(view.box[0], view.box[1], 1, 1)
+            g.fillRect(ox + view.box[0], oy + view.box[1], 1, 1)
         else
-            g.fillRect(view.box[0], view.box[1], view.box[2] - view.box[0] + 1, view.box[3] - view.box[1] + 1)
+            g.fillRect(ox + view.box[0], oy + view.box[1], view.box[2] - view.box[0] + 1, view.box[3] - view.box[1] + 1)
     }
 }
+
+if (!url_params.hide_palette)
+    document.body.append(draw_palette())
 
 var t1_agg = 0
 var t2_agg = 0
@@ -970,6 +1013,13 @@ function loop() {
     setTimeout(loop, LOOP_INTERVAL)
 }
 
+render_prep()
+function center_view() {
+    var b = document.body
+    b.scrollLeft = (b.scrollWidth - b.clientWidth) / 2
+    b.scrollTop = (b.scrollHeight - b.clientHeight) / 2
+}
+center_view()
 loop()
 
 wget = function (url, cb) {
@@ -987,19 +1037,11 @@ wget(url_params.chip || 'cpu004.txt', function (x) {
 
 c.onmousedown = function (e) {
     e.preventDefault()
-    var old_pos = getRelPos(c, e)
-    var moved = false
+    var pos = getRelPos(c, e)
 
     var oldMove = document.onmousemove
     document.onmousemove = function (e) {
-        var new_pos = getRelPos(c, e)
-        moved = true
-        
-        view.x -= (new_pos.x - old_pos.x) * window.devicePixelRatio / view.scale
-        view.y -= (new_pos.y - old_pos.y) * window.devicePixelRatio / view.scale
-        render()
-        
-        old_pos = new_pos
+        pos = null
     }
     
     var oldUp = document.onmouseup
@@ -1007,28 +1049,17 @@ c.onmousedown = function (e) {
         document.onmousemove = oldMove
         document.onmouseup = oldUp
 
-        if (!moved) {
-            var new_pos = getRelPos(c, e)
-            my_on_mouse_up(new_pos, e)
-        }
+        if (pos) my_on_mouse_up(pos, e)
     }
 }
 
 c.ontouchstart = function (e) {
     e.preventDefault()
-    var old_pos = getRelPos(c, e.touches[0])
-    var moved = false
+    var pos = getRelPos(c, e.touches[0])
 
     var oldMove = document.ontouchmove
     document.ontouchmove = function (e) {
-        var new_pos = getRelPos(c, e.touches[0])
-        moved = true
-        
-        view.x -= (new_pos.x - old_pos.x) * window.devicePixelRatio / view.scale
-        view.y -= (new_pos.y - old_pos.y) * window.devicePixelRatio / view.scale
-        render()
-        
-        old_pos = new_pos
+        pos = null
     }
     
     var oldEnd = document.ontouchend;
@@ -1038,22 +1069,38 @@ c.ontouchstart = function (e) {
         document.ontouchend = oldEnd
         document.ontouchcancel = oldCancel;
 
-        if (!moved) {
-            my_on_mouse_up(old_pos, e)
-        }
+        if (pos) my_on_mouse_up(pos, e)
     }
 }
 
-function my_on_mouse_up(new_pos, e) {
-    var x = Math.floor((new_pos.x * window.devicePixelRatio - c.width/2) / view.scale + view.x)
-    var y = Math.floor((new_pos.y * window.devicePixelRatio - c.height/2) / view.scale + view.y)
+function my_on_mouse_up(pos, e) {
+    var x = Math.floor(pos.x * window.devicePixelRatio / view.scale - (c.width - render_prep_canvas.width)/2) + view.low_x
+    var y = Math.floor(pos.y * window.devicePixelRatio / view.scale - (c.height - render_prep_canvas.height)/2) + view.low_y
     var key = x + ',' + y
     
     var changes = {}
     
     var clicked_thing = get_thing_at(x, y)
 
-    if (view.brush == 'box') {
+    if (view.brush == 'toggle_toggle') {
+        var best_toggle = null
+        var best_distSq = Infinity
+        each(model, function (m) {
+            if (m.t != 'toggle') { return }
+            var distSq = Math.pow(x - m.x, 2) + Math.pow(y - m.y, 2)
+            if (distSq < best_distSq) {
+                best_distSq = distSq
+                best_toggle = m
+            }
+        })
+        if (best_toggle) {
+            best_toggle.cc = (best_toggle.cc || -1) * -1
+            wave_front[best_toggle.x + ',' + best_toggle.y] = {
+                x : best_toggle.x,
+                y : best_toggle.y
+            }
+        }
+    } else if (view.brush == 'box') {
         if (e.shiftKey && view.box && view.box.length == 4) {
             if (e.metaKey) {
                 var the_dead = delete_view_box(changes)

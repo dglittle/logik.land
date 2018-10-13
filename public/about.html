@@ -2,9 +2,54 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>logik.land</title>
 </head>
-<body style="margin:0px">
-<div>
-    <iframe src="index.html?chip=alu.txt&amp;hide_palette=true" frame-border="0"></iframe>
-    hello welcome!
-</div>
-</body>
+<body style="margin:0px"></body>
+<script>
+
+function create_row(url, text) {
+    var d = document.createElement('div')
+    d.style.height = '360px'
+
+    var f = document.createElement('iframe')
+    f.setAttribute('frameBorder', '0')
+    f.setAttribute('src', url)
+    f.style.float = 'left'
+    f.style.width = '360px'
+    f.style.height = '360px'
+    d.append(f)
+
+    var dd = document.createElement('div')
+    dd.style.float = 'left'
+    dd.style.width = '360px'
+    dd.innerHTML = text
+    d.append(dd)
+
+    document.body.append(d)
+}
+
+create_row('index.html#chip=cpu004.txt,hide_palette=true,scale=1', `This is a four-bit micro-processor running a short counting program out of its tiny memory. See below for a breakdown of all the pieces of this thing.`)
+
+create_row('index.html#chip=display_no_logic.txt,hide_palette=true,scale=2', `Here's that number display at the top. You can click on this image to toggle the segments on an off. It will toggle whichever turquoise square you click nearest to.`)
+
+create_row('index.html#chip=or_gate.txt,hide_palette=true,scale=16', `Speaking of colored squares, here's an orange square. It is an OR gate. It will turn on and let current through if one of its inputs is on, OR if the other one is on.`)
+
+create_row('index.html#chip=and_gate.txt,hide_palette=true,scale=16', `This blue square is an AND gate. It will turn on and let current through if one of its inputs in on, AND the next one is on, AND the next one is on, AND they all must be on for the AND gate to turn on.<br/><br/>Turns out these gates can have more than two inputs. Each gate has 8 potential inputs, and 4 potential outputs. There are two inputs on each of the four sides, with an output in the middle of each side. Fortunately, an AND gate does not need the unused inputs to be on.`)
+
+create_row('index.html#chip=nand_gate.txt,hide_palette=true,scale=16', `Each of these magenta (pink) squares is a NAND gate. The top one can be thought of as a NOT gate, since it has only one input. This gate's name comes from Not-AND, and as the name implies, it is not like AND. It is precisely the opposite of AND.`)
+
+create_row('index.html#chip=display_ors.txt,hide_palette=true,scale=1', `Here's that number display again, except we've added some stuff. You used to control the display elements directly, but now you're meant to toggle on one of these sixteen predefined toggles, each associate with a number. Note that if you activate more than one toggle at the same time, you may see something weird on the display.<br/><br/>To get a sense for how this works, you can see a sort of grid with orange OR gates. Each vertical line represents a number, and each horizontal line represents a display element. Of course, each horizontal line has a NOT gate at the end, so you can kindof read off each horizontal line as meaning, "don't display this element for this number OR this number OR this number, etc..", as it passes over the vertical lines and connects with some of them via an OR gate.`)
+
+create_row('index.html#chip=display_ands.txt,hide_palette=true,scale=1', `Here's that number display yet again, with even more stuff added. The stuff we added converts a four-bit input into a single vertical wire output, which is then fed into our previous grid of OR gates.<br/><br/>The stuff we added is also a kind of grid. There are four pairs of horizontal lines. Each pair is associated with one bit of the input, where one line is that input, and the other line is the NOT of that input. These eight wires are then ANDed together vertically in various ways to detect each number.`)
+
+create_row('index.html#chip=alu.txt,hide_palette=true', `this thing adds and subtracts four-bit numbers!`)
+
+create_row('index.html#chip=i_and_ip.txt,hide_palette=true,scale=1', `this will display a four-bit number on an old LCD style display!`)
+
+create_row('index.html#chip=memory.txt,hide_palette=true,scale=1', `this will display a four-bit number on an old LCD style display!`)
+
+create_row('index.html#chip=memory_bit.txt,hide_palette=true,scale=1', `this will display a four-bit number on an old LCD style display!`)
+
+create_row('index.html#chip=memory_cell.txt,hide_palette=true,scale=1', `this will display a four-bit number on an old LCD style display!`)
+
+create_row('index.html#chip=registers.txt,hide_palette=true,scale=1', `this will display a four-bit number on an old LCD style display!`)
+
+</script>
