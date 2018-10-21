@@ -1,37 +1,29 @@
-
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>logik.land</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>logik.land</title>
 </head>
-<script src="cpu004.js"></script>
-<script src="https://www.gstatic.com/firebasejs/5.5.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/5.5.0/firebase-auth.js"></script>
-<script src="https://www.gstatic.com/firebasejs/5.5.0/firebase-firestore.js"></script>
 <body style="margin:0px"></body>
 <script>
 
-var config = {
-    apiKey: "AIzaSyA1Ez59Q8I7ayjalvcLGKMAj-Gxt9tdsnY",
-    authDomain: "logikland-55dfb.firebaseapp.com",
-    databaseURL: "https://logikland-55dfb.firebaseio.com",
-    projectId: "logikland-55dfb",
-    storageBucket: "logikland-55dfb.appspot.com",
-    messagingSenderId: "179129725350"
-}
-var db = firebase.initializeApp(config).firestore()
-db.settings({ timestampsInSnapshots : true })
-
-var uid = null
-var did_first_save = false
+var url_params = {}
+location.hash.substr(1).split(',').forEach(function (x) {
+    var y = x.split('=')
+    url_params[y[0]] = y[1]
+})
 
 var PALETTE_HEIGHT = 20
 var LOOP_INTERVAL = 20 // 20
 
+var c = null
+var g = null
+var render_prep_image_data = null
+var render_prep_canvas = null
+var checker_canvas = null
+var checker_pattern = null
+
 var view = {
-    x : -22,
-    y : 32,
-    scale : 2,
-    brush : 'wire',
+    scale : url_params.scale || 2,
+    brush : 'toggle_toggle',
     play : true,
     prev_x : 0,
     prev_y : 0,
@@ -42,19 +34,44 @@ var version = 0
 var model = {} // { x: , y: , t: , c: , v: } (t=type, c=charge, v=version)
 
 var stuff_sizes = {
-    'wire' : 1,
-    'cross_gate' : 1,
-    'and_gate' : 3,
-    'or_gate' : 3,
-    'nand_gate' : 3,
-    'toggle' : 3
+    wire : 1,
+    cross_gate : 1,
+    and_gate : 3,
+    or_gate : 3,
+    nand_gate : 3,
+    toggle : 3
+}
+
+var stuff_colors = {
+    wire : {
+        on : [255, 255, 0],
+        off : [80, 80, 0]
+    },
+    cross_gate : {
+        on : [0, 0, 0],
+        off : [0, 0, 0]
+    },
+    or_gate : {
+        on : [255, 128, 0],
+        off : [128, 64, 0]
+    },
+    and_gate : {
+        on : [0, 0, 255],
+        off : [0, 0, 128]
+    },
+    nand_gate : {
+        on : [255, 0, 255],
+        off : [128, 0, 128]
+    },
+    toggle : {
+        on : [0, 255, 255],
+        off : [0, 128, 128]
+    }
 }
 
 var wave_front = {}
 
-var unsaved_changes = {}
-
-function update_model(changes, dontUpdateFirebase) {
+function update_model(changes) {
     each(changes, function (_, key) {
         if (_) {
             model[key] = _
@@ -70,24 +87,10 @@ function update_model(changes, dontUpdateFirebase) {
     })
     
     render_prep()
-
     render()
-
-    if (!dontUpdateFirebase && location.hash.substr(1)) {
-        Object.assign(unsaved_changes, changes)
-        if (uid) {
-            if (!did_first_save)
-                unsaved_changes.uid = uid
-
-            db.collection('chips').doc(location.hash.substr(1)).set(unsaved_changes, { merge : true })
-
-            did_first_save = true
-            unsaved_changes = {}
-        }
-    }
 }
 
-function set_new_model(new_model, dontUpdateFirebase) {
+function set_new_model(new_model) {
     var changes = {}
     each(model, function (_, key) {
         changes[key] = null
@@ -95,24 +98,7 @@ function set_new_model(new_model, dontUpdateFirebase) {
     each(new_model, function (_, key) {
         changes[key] = _
     })
-    unsaved_changes = {}
-    update_model(changes, dontUpdateFirebase)
-}
-
-function fetch_model() {
-    if (location.hash.substr(1)) {
-        db.collection('chips').doc(location.hash.substr(1)).get().then(function (x) {
-            x = x.data()
-            if (x) {
-                delete x.uid
-            } else {
-                x = {}
-            }
-            set_new_model(x, true)
-        })
-    } else {
-        set_new_model(cpu004, true)
-    }
+    update_model(changes)
 }
 
 function copy_view_box() {
@@ -148,12 +134,15 @@ function get_thing_at(x, y) {
 
 function draw_palette() {
     var d = document.createElement('div')
+    d.style.position = 'fixed'
+    d.style.left = '0px'
+    d.style.top = '0px'
     d.style.width = '100%'
 
-    if (window.innerWidth / 40 < 13) {
-        d.style.height = '80px'
+    if (window.innerWidth / 40 < 16) {
+	    d.style.height = '80px'
     } else {
-        d.style.height = '40px'
+	    d.style.height = '40px'
     }
 
     function createLogo() {
@@ -170,22 +159,22 @@ function draw_palette() {
         c.height = 40
         var g = c.getContext('2d')
 
-        g.fillStyle = 'black'
-        var logo = `
-            X...XXX.XXX.X.X..X..X....X..X..X.XX.
-            X...X.X.X.....X.X...X...X.X.XX.X.X.X
-            X...X.X.X.X.X.XX....X...XXX.X.XX.X.X
-            X...X.X.X.X.X.X.X...X...X.X.X..X.X.X
-            XXX.XXX.XXX.X.X.X.X.XXX.X.X.X..X.XX.
-        `
-        each(logo.trim().split(/\r?\n/), function (row, ri) {
-            row = row.trim()
-            for (var i = 0; i < row.length; i++) {
-                if (row[i] == 'X') {
-                    g.fillRect(i * 2, ri * 2, 2, 2)
-                }
-            }
-        })
+		g.fillStyle = 'black'
+		var logo = `
+			X...XXX.XXX.X.X..X..X....X..X..X.XX.
+			X...X.X.X.....X.X...X...X.X.XX.X.X.X
+			X...X.X.X.X.X.XX....X...XXX.X.XX.X.X
+			X...X.X.X.X.X.X.X...X...X.X.X..X.X.X
+			XXX.XXX.XXX.X.X.X.X.XXX.X.X.X..X.XX.
+		`
+		each(logo.trim().split(/\r?\n/), function (row, ri) {
+			row = row.trim()
+			for (var i = 0; i < row.length; i++) {
+				if (row[i] == 'X') {
+					g.fillRect(i * 2, ri * 2, 2, 2)
+				}
+			}
+		})
 
         b.append(c)
         d.append(b)
@@ -200,12 +189,12 @@ function draw_palette() {
         g.strokeStyle = 'black'
         g.stroke()
 
-        g.beginPath()
-        g.arc(17.5, 17.5, 10, 0, 2*Math.PI)
-        g.fillStyle = 'lightblue'
-        g.fill()
+		g.beginPath()
+		g.arc(17.5, 17.5, 10, 0, 2*Math.PI)
+		g.fillStyle = 'lightblue'
+		g.fill()
         g.strokeStyle = 'black'
-        g.stroke()
+		g.stroke()
     }
 
     function createZoomInButton() {
@@ -215,8 +204,16 @@ function draw_palette() {
         b.style.width = '40px'
         b.style.height = '40px'
         b.onclick = function () {
-            view.scale *= 2
-            render()
+            var b = document.body
+            var x = (b.scrollLeft + b.clientWidth / 2) / b.scrollWidth
+            var y = (b.scrollTop + b.clientHeight / 2) / b.scrollHeight
+
+	        view.scale *= 2
+            render_prep()
+	        render()
+
+            b.scrollLeft = x * b.scrollWidth - b.clientWidth / 2
+            b.scrollTop = y * b.scrollHeight - b.clientHeight / 2
         }
 
         var c = document.createElement('canvas')
@@ -226,9 +223,9 @@ function draw_palette() {
 
         drawMagnifyingGlass(c, g)
 
-        g.fillStyle = 'black'
-        g.fillRect(12, 16, 11, 3)
-        g.fillRect(16, 12, 3, 11)
+		g.fillStyle = 'black'
+		g.fillRect(12, 16, 11, 3)
+		g.fillRect(16, 12, 3, 11)
 
         b.append(c)
         d.append(b)
@@ -242,9 +239,17 @@ function draw_palette() {
         b.style.width = '40px'
         b.style.height = '40px'
         b.onclick = function () {
-            view.scale = Math.floor(view.scale/2)
-            if (view.scale < 1) view.scale = 1
-            render()
+            var b = document.body
+            var x = (b.scrollLeft + b.clientWidth / 2) / b.scrollWidth
+            var y = (b.scrollTop + b.clientHeight / 2) / b.scrollHeight
+
+	        view.scale = Math.floor(view.scale/2)
+	        if (view.scale < 1) view.scale = 1
+            render_prep()
+	        render()
+
+            b.scrollLeft = x * b.scrollWidth - b.clientWidth / 2
+            b.scrollTop = y * b.scrollHeight - b.clientHeight / 2
         }
 
         var c = document.createElement('canvas')
@@ -254,8 +259,8 @@ function draw_palette() {
 
         drawMagnifyingGlass(c, g)
 
-        g.fillStyle = 'black'
-        g.fillRect(12, 16, 11, 3)
+		g.fillStyle = 'black'
+		g.fillRect(12, 16, 11, 3)
 
         b.append(c)
         d.append(b)
@@ -275,31 +280,168 @@ function draw_palette() {
         var g = c.getContext('2d')
 
         function redraw() {
-            g.clearRect(0, 0, 40, 40)
+        	g.clearRect(0, 0, 40, 40)
 
-            g.fillStyle = 'black'
-            if (view.play) {
-                g.fillRect(12, 12, 40 - 12*2, 40 - 12*2)
-            } else {
-                g.beginPath()
-                g.moveTo(12, 12)
-                g.lineTo(12, 40 - 12)
-                g.lineTo(40 - 12, 20)
-                g.fill()
-            }
+			g.fillStyle = 'black'
+			if (view.play) {
+				g.fillRect(12, 12, 40 - 12*2, 40 - 12*2)
+			} else {
+				g.beginPath()
+				g.moveTo(12, 12)
+				g.lineTo(12, 40 - 12)
+				g.lineTo(40 - 12, 20)
+				g.fill()
+			}
         }
         redraw()
 
         b.onclick = function () {
-            view.play = !view.play
-            redraw()
-            render()
+	        view.play = !view.play
+	        redraw()
+	        render()
         }
 
         b.append(c)
         d.append(b)
     }
     createStopButton()
+
+    var last_save_url = null
+    function createSaveButton() {
+        var b = document.createElement('div')
+        b.style.background = 'white'
+        b.style.display = 'inline-block'
+        b.style.width = '40px'
+        b.style.height = '40px'
+
+        var c = document.createElement('canvas')
+        c.width = 40
+        c.height = 40
+        var g = c.getContext('2d')
+
+        g.fillStyle = 'black'
+        g.beginPath()
+        g.moveTo(10, 20)
+        g.lineTo(30, 20)
+        g.lineTo(20, 30)
+        g.fill()
+        g.fillRect(18, 10, 4, 10)
+        g.fillRect(10, 29, 20, 1)
+
+        b.onclick = function () {
+            var a = document.createElement('a')
+            if (last_save_url)
+                window.URL.revokeObjectURL(last_save_url)
+            last_save_url = window.URL.createObjectURL(new Blob([JSON.stringify(model)], { type : 'text/plain' }))
+            a.setAttribute('href', last_save_url)
+            a.setAttribute('download', 'chip.txt')
+            a.style.display = 'none'
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+
+            // var a = document.createElement('a')
+            // a.setAttribute('href', render_prep_canvas.toDataURL('image/png'))
+            // a.setAttribute('download', 'chip.png')
+            // a.style.display = 'none'
+            // document.body.appendChild(a)
+            // a.click()
+            // document.body.removeChild(a)
+        }
+
+        b.append(c)
+        d.append(b)
+    }
+    createSaveButton()
+
+    function createUploadButton() {
+        var b = document.createElement('div')
+        b.style.background = 'white'
+        b.style.display = 'inline-block'
+        b.style.width = '40px'
+        b.style.height = '40px'
+
+        var c = document.createElement('canvas')
+        c.width = 40
+        c.height = 40
+        var g = c.getContext('2d')
+
+        g.fillStyle = 'black'
+        g.beginPath()
+        g.moveTo(10, 20)
+        g.lineTo(30, 20)
+        g.lineTo(20, 10)
+        g.fill()
+        g.fillRect(18, 20, 4, 10)
+        g.fillRect(10, 10, 20, 1)
+
+        b.onclick = function () {
+            var inp = document.createElement('input')
+            inp.setAttribute('type', 'file')
+            inp.onchange = function () {
+                if (this.files.length == 1) {
+                    var r = new FileReader()
+                    r.onload = function (e) {
+                        set_new_model(JSON.parse(e.target.result))
+
+                        // var im = new Image()
+                        // im.onload = function () {
+                        //     var c = document.createElement('canvas')
+                        //     c.width = im.width
+                        //     c.height = im.height
+                        //     var g = c.getContext('2d')
+                        //     g.drawImage(im, 0, 0, im.width, im.height)
+                        //     var data = g.getImageData(0, 0, im.width, im.height).data
+                        //     var new_model = {}
+                        //     var i = 0
+                        //     for (var y = 0; y < im.height; y++) {
+                        //         for (var x = 0; x < im.width; x++) {
+                        //             var R = data[i++]
+                        //             var G = data[i++]
+                        //             var B = data[i++]
+                        //             var A = data[i++]
+
+                        //             var found_overlapping_gate = false
+                        //             for (var yy = -2; yy <= 0; yy++) {
+                        //                 for (var xx = -2; xx <= 0; xx++) {
+                        //                     var thing = new_model[(x + xx) + ',' + (y + yy)]
+                        //                     if (thing && (stuff_sizes[thing.t] == 3)) {
+                        //                         found_overlapping_gate = true
+                        //                     }
+                        //                 }
+                        //             }
+                        //             if (found_overlapping_gate) continue
+
+                        //             function color_comp(x) {
+                        //                 return x[0] == R && x[1] == G && x[2] == B && A == 255
+                        //             }
+                        //             each(stuff_colors, function (color, thing) {
+                        //                 if (color_comp(color.on)) {
+                        //                     new_model[x + ',' + y] = { x : x, y : y, t : thing, c : 1, v : 0 }
+                        //                 }
+                        //                 if (color_comp(color.off)) {
+                        //                     new_model[x + ',' + y] = { x : x, y : y, t : thing, c : -1, v : 0 }
+                        //                 }
+                        //             })
+                        //         }
+                        //     }
+                        //     set_new_model(new_model)
+                        // }
+                        // im.src = r.result
+                    }
+                    r.readAsText(this.files[0])
+                }
+                document.body.removeChild(inp)
+            }
+            inp.style.display = 'none'
+            document.body.append(inp)
+            inp.click()
+        }
+
+        b.append(c)
+        d.append(b)
+    }
+    createUploadButton()
 
     var radio_buttons = {}
     
@@ -318,7 +460,7 @@ function draw_palette() {
         b.onclick = function () {
             view.brush = brush
             each(radio_buttons, function (x, k) {
-                if (k != brush) x.drawOff(x.c, x.g)
+            	if (k != brush) x.drawOff(x.c, x.g)
             })
             drawOn(c, g)
         }
@@ -329,46 +471,46 @@ function draw_palette() {
     }
     
     create_radio_button(function (c, g) {
-        g.fillStyle = 'rgb(255, 255, 0)'
-        g.fillRect(0, 0, 40, 40)
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(4, 4, 32, 32)
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
 
         g.fillStyle = 'rgb(255, 255, 0)'
-        g.fillRect(10, 18, 20, 4)
+    	g.fillRect(10, 18, 20, 4)
     }, function (c, g) {
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
 
         g.fillStyle = 'rgb(128, 128, 0)'
-        g.fillRect(10, 18, 20, 4)
+    	g.fillRect(10, 18, 20, 4)
     }, 'wire')
     create_radio_button(function (c, g) {
-        g.fillStyle = 'rgb(255, 255, 0)'
-        g.fillRect(0, 0, 40, 40)
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(4, 4, 32, 32)
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
 
         g.fillStyle = 'rgb(255, 255, 0)'
-        g.fillRect(10, 18, 20, 4)
-        g.fillRect(18, 10, 4, 20)
-        g.fillStyle = 'rgb(0, 0, 0)'
-        g.fillRect(18, 18, 4, 4)
+    	g.fillRect(10, 18, 20, 4)
+    	g.fillRect(18, 14, 4, 12)
+    	g.fillStyle = 'rgb(0, 0, 0)'
+    	g.fillRect(18, 18, 4, 4)
     }, function (c, g) {
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
 
         g.fillStyle = 'rgb(128, 128, 0)'
-        g.fillRect(10, 18, 20, 4)
-        g.fillRect(18, 10, 4, 20)
-        g.fillStyle = 'rgb(0, 0, 0)'
-        g.fillRect(18, 18, 4, 4)
+    	g.fillRect(10, 18, 20, 4)
+    	g.fillRect(18, 14, 4, 12)
+    	g.fillStyle = 'rgb(0, 0, 0)'
+    	g.fillRect(18, 18, 4, 4)
     }, 'cross_gate')
     create_radio_button(function (c, g) {
-        g.fillStyle = 'rgb(255, 255, 0)'
-        g.fillRect(0, 0, 40, 40)
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(4, 4, 32, 32)
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
         g.fillStyle = 'rgb(255, 128, 0)'
         g.fillRect(14, 14, 12, 12)
         g.fillStyle = 'rgb(255, 255, 0)'
@@ -377,8 +519,8 @@ function draw_palette() {
         g.fillStyle = 'rgb(80, 80, 0)'
         g.fillRect(10, 22, 4, 4)
     }, function (c, g) {
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
         g.fillStyle = 'rgb(128, 64, 0)'
         g.fillRect(14, 14, 12, 12)
         g.fillStyle = 'rgb(80, 80, 0)'
@@ -387,10 +529,10 @@ function draw_palette() {
         g.fillRect(10, 22, 4, 4)
     }, 'or_gate')
     create_radio_button(function (c, g) {
-        g.fillStyle = 'rgb(255, 255, 0)'
-        g.fillRect(0, 0, 40, 40)
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(4, 4, 32, 32)
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
         g.fillStyle = 'rgb(0, 0, 255)'
         g.fillRect(14, 14, 12, 12)
         g.fillStyle = 'rgb(255, 255, 0)'
@@ -398,8 +540,8 @@ function draw_palette() {
         g.fillRect(26, 18, 4, 4)
         g.fillRect(10, 22, 4, 4)
     }, function (c, g) {
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
         g.fillStyle = 'rgb(0, 0, 128)'
         g.fillRect(14, 14, 12, 12)
         g.fillStyle = 'rgb(80, 80, 0)'
@@ -408,10 +550,10 @@ function draw_palette() {
         g.fillRect(10, 22, 4, 4)
     }, 'and_gate')
     create_radio_button(function (c, g) {
-        g.fillStyle = 'rgb(255, 255, 0)'
-        g.fillRect(0, 0, 40, 40)
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(4, 4, 32, 32)
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
         g.fillStyle = 'rgb(255, 0, 255)'
         g.fillRect(14, 14, 12, 12)
         g.fillStyle = 'rgb(255, 255, 0)'
@@ -420,8 +562,8 @@ function draw_palette() {
         g.fillRect(10, 14, 4, 4)
         g.fillRect(10, 22, 4, 4)
     }, function (c, g) {
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
         g.fillStyle = 'rgb(128, 0, 128)'
         g.fillRect(14, 14, 12, 12)
         g.fillStyle = 'rgb(255, 255, 0)'
@@ -431,18 +573,18 @@ function draw_palette() {
         g.fillRect(26, 18, 4, 4)
     }, 'nand_gate')
     create_radio_button(function (c, g) {
-        g.fillStyle = 'rgb(255, 255, 0)'
-        g.fillRect(0, 0, 40, 40)
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(4, 4, 32, 32)
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
 
         g.fillStyle = 'rgb(0, 255, 255)'
         g.fillRect(14, 14, 12, 12)
         g.fillStyle = 'rgb(255, 255, 0)'
         g.fillRect(26, 18, 4, 4)
     }, function (c, g) {
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
 
         g.fillStyle = 'rgb(0, 128, 128)'
         g.fillRect(14, 14, 12, 12)
@@ -450,47 +592,72 @@ function draw_palette() {
         g.fillRect(26, 18, 4, 4)
     }, 'toggle')
     create_radio_button(function (c, g) {
-        g.fillStyle = 'rgb(255, 255, 0)'
-        g.fillRect(0, 0, 40, 40)
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(4, 4, 32, 32)
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
 
-        g.beginPath()
-        g.moveTo(10, 10)
-        g.lineTo(30, 30)
-        g.moveTo(10, 30)
-        g.lineTo(30, 10)
-        g.lineWidth = 4
-        g.strokeStyle = 'rgb(255, 0, 0)'
-        g.stroke()
+    	g.beginPath()
+    	g.moveTo(10, 10)
+    	g.lineTo(30, 30)
+    	g.moveTo(10, 30)
+    	g.lineTo(30, 10)
+    	g.lineWidth = 4
+    	g.strokeStyle = 'rgb(255, 0, 0)'
+    	g.stroke()
     }, function (c, g) {
-        g.fillStyle = 'rgb(0, 40, 0)'
-        g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
 
-        g.beginPath()
-        g.moveTo(10, 10)
-        g.lineTo(30, 30)
-        g.moveTo(10, 30)
-        g.lineTo(30, 10)
-        g.lineWidth = 1
-        g.strokeStyle = 'rgb(128, 0, 0)'
-        g.stroke()
+    	g.beginPath()
+    	g.moveTo(10, 10)
+    	g.lineTo(30, 30)
+    	g.moveTo(10, 30)
+    	g.lineTo(30, 10)
+    	g.lineWidth = 1
+    	g.strokeStyle = 'rgb(128, 0, 0)'
+    	g.stroke()
     }, 'delete')
+    create_radio_button(function (c, g) {
+    	g.fillStyle = 'rgb(255, 255, 0)'
+    	g.fillRect(0, 0, 40, 40)
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(4, 4, 32, 32)
+
+    	g.fillStyle = 'rgb(255, 0, 0)'
+    	g.fillRect(10, 10, 20, 4)
+        g.fillRect(10, 10, 4, 20)
+        g.fillRect(10 + 20 - 4, 10, 4, 20)
+        g.fillRect(10, 10 + 20 - 4, 20, 4)
+    }, function (c, g) {
+    	g.fillStyle = 'rgb(0, 40, 0)'
+    	g.fillRect(0, 0, 40, 40)
+
+        g.fillStyle = 'rgb(128, 0, 0)'
+        g.fillRect(10, 10, 20, 1)
+        g.fillRect(10, 10, 1, 20)
+        g.fillRect(10 + 20 - 1, 10, 1, 20)
+        g.fillRect(10, 10 + 20 - 1, 20, 1)
+    }, 'box', true)
     create_radio_button(function (c, g) {
         g.fillStyle = 'rgb(255, 255, 0)'
         g.fillRect(0, 0, 40, 40)
         g.fillStyle = 'rgb(0, 40, 0)'
         g.fillRect(4, 4, 32, 32)
 
-        g.fillStyle = 'rgb(255, 0, 0)'
-        g.fillRect(10, 10, 20, 20)
+        g.fillStyle = 'rgb(' + stuff_colors.toggle.on.join(',') + ')'
+        g.fillRect(14, 6, 12, 12)
+        g.fillStyle = 'rgb(' + stuff_colors.toggle.off.join(',') + ')'
+        g.fillRect(14, 22, 12, 12)
     }, function (c, g) {
         g.fillStyle = 'rgb(0, 40, 0)'
         g.fillRect(0, 0, 40, 40)
 
-        g.fillStyle = 'rgb(128, 0, 0)'
-        g.fillRect(10, 10, 20, 20)
-    }, 'box', true)
+        g.fillStyle = 'rgb(' + stuff_colors.toggle.off.join(',') + ')'
+        g.fillRect(14, 6, 12, 12)
+        g.fillStyle = 'rgb(' + stuff_colors.toggle.off.join(',') + ')'
+        g.fillRect(14, 22, 12, 12)
+    }, 'toggle_toggle', true)
 
     document.addEventListener('keydown', function (e) {
         if (view.brush == 'box' && e.keyCode == 8 && view.box && view.box.length == 4) {
@@ -552,15 +719,6 @@ function draw_palette() {
 
     return d
 }
-document.body.append(draw_palette())
-
-var c = document.createElement('canvas')
-c.width = window.innerWidth * window.devicePixelRatio
-c.height = (window.innerHeight - PALETTE_HEIGHT*2) * window.devicePixelRatio
-c.style.width = window.innerWidth
-c.style.height = window.innerHeight - PALETTE_HEIGHT*2
-var g = c.getContext('2d')
-document.body.append(c)
 
 function get_adjacent(x, y) {
     return [
@@ -703,9 +861,6 @@ function propagate() {
     wave_front = new_wave_front
 }
 
-var render_prep_image_data = null
-var render_prep_canvas = null
-
 function set_pixel(x, y, color) {
     if (render_prep_image_data) {
         var base = (y - view.low_y) * render_prep_image_data.width * 4 + (x - view.low_x) * 4
@@ -718,17 +873,13 @@ function set_pixel(x, y, color) {
 
 function draw_thing(_) {
     if (_.t == 'wire') {
-        set_pixel(_.x, _.y, _.c > 0 ? [255, 255, 0] : [80, 80, 0])
+        set_pixel(_.x, _.y, _.c > 0 ? stuff_colors.wire.on : stuff_colors.wire.off)
     } else if (_.t == 'cross_gate') {
-        set_pixel(_.x, _.y, [0, 0, 0])
+        set_pixel(_.x, _.y, _.c > 0 ? stuff_colors.cross_gate.on : stuff_colors.cross_gate.off)
     } else {
-        var fac = _.c > 0 ? 1 : 0.5
-        var color = 
-            (_.t == 'or_gate') ? [fac * 255, fac * 128, 0] :
-            (_.t == 'and_gate') ? [0, 0, fac * 255] :
-            (_.t == 'nand_gate') ? [fac * 255, 0, fac * 255] :
-            (_.t == 'toggle') ? [0, fac * 255, fac * 255] :
-            [255, 0, 0]
+        var color = stuff_colors[_.t]
+        if (!color) color = [255, 0, 0]
+        else color = _.c > 0 ? color.on : color.off
         for (var yy = 0; yy < 3; yy++) {
             for (var xx = 0; xx < 3; xx++) {
                 set_pixel(_.x + xx, _.y + yy, color)
@@ -765,48 +916,58 @@ function render_prep() {
     view.used_width = width
     view.used_height = height
 
-    render_prep_image_data = g.createImageData(width, height)
+    if (!c) {
+        c = document.createElement('canvas')
+    }
+    c.width = Math.max(width + 200, window.innerWidth * window.devicePixelRatio)
+    c.height = Math.max(height + 200, window.innerHeight * window.devicePixelRatio)
+    c.style.width = c.width / window.devicePixelRatio * view.scale
+    c.style.height = c.height / window.devicePixelRatio * view.scale
+    c.style['image-rendering'] = 'pixelated'
+    g = c.getContext('2d')
+
+    if (!render_prep_canvas)
+        render_prep_canvas = document.createElement('canvas')
+    render_prep_canvas.width = width
+    render_prep_canvas.height = height
     
+    render_prep_image_data = g.createImageData(width, height)
     each(model, function (_, key) {
         draw_thing(_)
     })
-    
-    render_prep_canvas = document.createElement('canvas')
-    render_prep_canvas.width = width
-    render_prep_canvas.height = height
+
+    if (!checker_canvas) {
+        checker_canvas = document.createElement('canvas')
+        checker_canvas.width = 2
+        checker_canvas.height = 2
+        checker_canvas.getContext('2d').fillStyle = 'rgba(0, 32, 0, 1)'
+        checker_canvas.getContext('2d').fillRect(0, 0, 2, 2)
+        checker_canvas.getContext('2d').fillStyle = 'rgba(0, 40, 0, 1)'
+        checker_canvas.getContext('2d').fillRect(1, 0, 1, 1)
+        checker_canvas.getContext('2d').fillRect(0, 1, 1, 1)
+        checker_pattern = g.createPattern(checker_canvas, 'repeat')
+    }
 }
 
-checker_canvas = document.createElement('canvas')
-checker_canvas.width = 2
-checker_canvas.height = 2
-checker_canvas.getContext('2d').fillStyle = 'rgba(0, 32, 0, 1)'
-checker_canvas.getContext('2d').fillRect(0, 0, 2, 2)
-checker_canvas.getContext('2d').fillStyle = 'rgba(0, 40, 0, 1)'
-checker_canvas.getContext('2d').fillRect(1, 0, 1, 1)
-checker_canvas.getContext('2d').fillRect(0, 1, 1, 1)
-var checker_pattern = g.createPattern(checker_canvas, 'repeat')
-
 function render() {
-    g.setTransform(view.scale, 0, 0, view.scale,
-        Math.floor(c.width/2) - view.x*view.scale,
-        Math.floor(c.height/2) - view.y*view.scale)
-
     g.fillStyle = checker_pattern
-    g.fillRect(view.x - (c.width/2/view.scale), view.y - (c.height/2/view.scale), c.width/view.scale, c.height/view.scale)
+    g.fillRect(0, 0, c.width, c.height)
 
-    if (render_prep_canvas) {
-        render_prep_canvas.getContext('2d').putImageData(render_prep_image_data, 0, 0)
-        
-        g.imageSmoothingEnabled = false
-        g.drawImage(render_prep_canvas, view.low_x, view.low_y, view.used_width, view.used_height)
-    }
+    render_prep_canvas.getContext('2d').putImageData(render_prep_image_data, 0, 0)
+    g.imageSmoothingEnabled = false
+    var x = Math.floor((c.width - render_prep_image_data.width) / 2)
+    var y = Math.floor((c.height - render_prep_image_data.height) / 2)
+    g.drawImage(render_prep_canvas, x, y, view.used_width, view.used_height)
 
     if (view.brush == 'box' && view.box) {
         g.fillStyle = 'rgba(255,0,0,0.6)'
+
+        var ox = Math.floor((c.width - render_prep_canvas.width)/2 - view.low_x)
+        var oy = Math.floor((c.height - render_prep_canvas.height)/2 - view.low_y)
         if (view.box.length == 2)
-            g.fillRect(view.box[0], view.box[1], 1, 1)
+            g.fillRect(ox + view.box[0], oy + view.box[1], 1, 1)
         else
-            g.fillRect(view.box[0], view.box[1], view.box[2] - view.box[0] + 1, view.box[3] - view.box[1] + 1)
+            g.fillRect(ox + view.box[0], oy + view.box[1], view.box[2] - view.box[0] + 1, view.box[3] - view.box[1] + 1)
     }
 }
 
@@ -848,39 +1009,74 @@ function loop() {
     setTimeout(loop, LOOP_INTERVAL)
 }
 
-firebase.auth().onAuthStateChanged(function(user) {
-    if (user) {
-        uid = user.uid
-        did_first_save = false
-        update_model({})
-    } else {
-        uid = null
+render_prep()
+function prep_view() {
+    if (!url_params.hide_palette) {
+        var p = draw_palette()
+        if (window.innerWidth > window.innerHeight) {
+            document.body.append(p)
+            document.body.append(c)
+        } else {
+            var grid = document.createElement('div')
+            grid.style.display = 'grid'
+            grid.style.width = '100%'
+            grid.style.height = '100%'
+            grid.style['grid-template-columns'] = 'auto'
+            grid.style['grid-template-rows'] = 'auto 80px'
+            document.body.append(grid)
+
+            var canvas_holder = document.createElement('div')
+            canvas_holder.style.overflow = 'scroll'
+            canvas_holder.append(c)
+            grid.append(canvas_holder)
+
+            p.style.position = 'static'
+            grid.append(p)
+        }
     }
-})
-firebase.auth().signInAnonymously()
 
-fetch_model()
-window.addEventListener('hashchange', function () {
-    fetch_model()
-}, false)
 
+    var b = document.body
+
+
+    console.log('hi!')
+    console.log(b.scrollLeft)
+    console.log(b.scrollWidth)
+    console.log(b.clientWidth)
+    console.log(b.scrollTop)
+    console.log(b.scrollHeight)
+    console.log(b.clientHeight)
+    console.log(window.devicePixelRatio)
+    console.log((b.scrollWidth - b.clientWidth) / 2)
+    console.log((b.scrollHeight - b.clientHeight) / 2)
+
+
+    b.scrollLeft = (b.scrollWidth - b.clientWidth) / 2
+    b.scrollTop = (b.scrollHeight - b.clientHeight) / 2
+}
+prep_view()
 loop()
+
+wget = function (url, cb) {
+    var r = new XMLHttpRequest()
+    r.addEventListener("load", function () {
+        cb(this.responseText)
+    })
+    r.open("GET", url)
+    r.send()
+}
+
+wget(url_params.chip || 'cpu004.txt', function (x) {
+    set_new_model(JSON.parse(x))
+})
 
 c.onmousedown = function (e) {
     e.preventDefault()
-    var old_pos = getRelPos(c, e)
-    var moved = false
+    var pos = getRelPos(c, e)
 
     var oldMove = document.onmousemove
     document.onmousemove = function (e) {
-        var new_pos = getRelPos(c, e)
-        moved = true
-        
-        view.x -= (new_pos.x - old_pos.x) * window.devicePixelRatio / view.scale
-        view.y -= (new_pos.y - old_pos.y) * window.devicePixelRatio / view.scale
-        render()
-        
-        old_pos = new_pos
+        pos = null
     }
     
     var oldUp = document.onmouseup
@@ -888,28 +1084,17 @@ c.onmousedown = function (e) {
         document.onmousemove = oldMove
         document.onmouseup = oldUp
 
-        if (!moved) {
-            var new_pos = getRelPos(c, e)
-            my_on_mouse_up(new_pos, e)
-        }
+        if (pos) my_on_mouse_up(pos, e)
     }
 }
 
 c.ontouchstart = function (e) {
     e.preventDefault()
-    var old_pos = getRelPos(c, e.touches[0])
-    var moved = false
+    var pos = getRelPos(c, e.touches[0])
 
     var oldMove = document.ontouchmove
     document.ontouchmove = function (e) {
-        var new_pos = getRelPos(c, e.touches[0])
-        moved = true
-        
-        view.x -= (new_pos.x - old_pos.x) * window.devicePixelRatio / view.scale
-        view.y -= (new_pos.y - old_pos.y) * window.devicePixelRatio / view.scale
-        render()
-        
-        old_pos = new_pos
+        pos = null
     }
     
     var oldEnd = document.ontouchend;
@@ -919,22 +1104,38 @@ c.ontouchstart = function (e) {
         document.ontouchend = oldEnd
         document.ontouchcancel = oldCancel;
 
-        if (!moved) {
-            my_on_mouse_up(old_pos, e)
-        }
+        if (pos) my_on_mouse_up(pos, e)
     }
 }
 
-function my_on_mouse_up(new_pos, e) {
-    var x = Math.floor((new_pos.x * window.devicePixelRatio - c.width/2) / view.scale + view.x)
-    var y = Math.floor((new_pos.y * window.devicePixelRatio - c.height/2) / view.scale + view.y)
+function my_on_mouse_up(pos, e) {
+    var x = Math.floor(pos.x * window.devicePixelRatio / view.scale - (c.width - render_prep_canvas.width)/2) + view.low_x
+    var y = Math.floor(pos.y * window.devicePixelRatio / view.scale - (c.height - render_prep_canvas.height)/2) + view.low_y
     var key = x + ',' + y
     
     var changes = {}
     
     var clicked_thing = get_thing_at(x, y)
 
-    if (view.brush == 'box') {
+    if (view.brush == 'toggle_toggle') {
+        var best_toggle = null
+        var best_distSq = Infinity
+        each(model, function (m) {
+            if (m.t != 'toggle') { return }
+            var distSq = Math.pow(x - m.x, 2) + Math.pow(y - m.y, 2)
+            if (distSq < best_distSq) {
+                best_distSq = distSq
+                best_toggle = m
+            }
+        })
+        if (best_toggle) {
+            best_toggle.cc = (best_toggle.cc || -1) * -1
+            wave_front[best_toggle.x + ',' + best_toggle.y] = {
+                x : best_toggle.x,
+                y : best_toggle.y
+            }
+        }
+    } else if (view.brush == 'box') {
         if (e.shiftKey && view.box && view.box.length == 4) {
             if (e.metaKey) {
                 var the_dead = delete_view_box(changes)
@@ -1127,20 +1328,20 @@ function getRelPos(to, positionedObject) {
 
 
 function each(o, cb) {
-    if (o instanceof Array) {
-        for (var i = 0; i < o.length; i++) {
-            if (cb(o[i], i, o) == false)
-                return false
-        }
-    } else {
-        for (var k in o) {
-            if (o.hasOwnProperty(k)) {
-                if (cb(o[k], k, o) == false)
-                    return false
-            }
-        }
-    }
-    return true
+	if (o instanceof Array) {
+		for (var i = 0; i < o.length; i++) {
+			if (cb(o[i], i, o) == false)
+				return false
+		}
+	} else {
+		for (var k in o) {
+			if (o.hasOwnProperty(k)) {
+				if (cb(o[k], k, o) == false)
+					return false
+			}
+		}
+	}
+	return true
 }
 
 </script>
